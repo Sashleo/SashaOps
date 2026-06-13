@@ -1,0 +1,68 @@
+# ── Web Framework ─────────────────────────────────────────────────────────────
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+jinja2==3.1.4
+itsdangerous==2.2.0
+httpx==0.27.2
+
+# ── Google Gemini AI ───────────────────────────────────────────────────────────
+google-generativeai==0.8.3
+
+# ── Security ───────────────────────────────────────────────────────────────────
+argon2-cffi==23.1.0
+cryptography==43.0.1
+pyotp==2.9.0
+qrcode[pil]==7.4.2
+
+# ── Post-Quantum Cryptography ──────────────────────────────────────────────────
+# liboqs-python provides ML-KEM and ML-DSA
+# Install: pip install liboqs-python
+# Requires liboqs C library — handled in Dockerfile
+liboqs-python==0.15.0
+
+# ── Database ───────────────────────────────────────────────────────────────────
+# SQLCipher encrypted SQLite
+# pysqlcipher3 requires sqlcipher — handled in Dockerfile
+pysqlcipher3==1.2.0
+
+# ── Intelligence & Web ─────────────────────────────────────────────────────────
+feedparser==6.0.11
+requests==2.32.3
+playwright==1.47.0
+beautifulsoup4==4.12.3
+lxml==5.3.0
+
+# ── Data Processing ────────────────────────────────────────────────────────────
+pandas==2.2.2
+
+# ── Report Generation ──────────────────────────────────────────────────────────
+weasyprint==61.2
+pydyf==0.8.0
+python-docx==1.1.2
+pdfplumber==0.11.4
+openpyxl==3.1.5
+Pillow==10.4.0
+
+# ── Utilities ──────────────────────────────────────────────────────────────────
+python-dotenv==1.0.1
+pydantic==2.9.2
+pydantic-settings==2.5.2
+structlog==24.4.0
+python-jose[cryptography]==3.3.0
+
+# OCR for scanned PSX annual reports
+pytesseract==0.3.13
+pdf2image==1.17.0
+
+# ── Local NLP (document intelligence — no external calls) ─────────────────────
+# en_core_web_sm model is downloaded at Docker build time (see Dockerfile)
+spacy==3.7.4
+
+# ── Local ML layer (CPU-only; enable via LOCAL_ML=true) ───────────────────────
+# torch CPU-only wheel is installed in Dockerfile via --extra-index-url
+# Models pre-downloaded at build time — no network calls at runtime
+torch
+transformers==4.44.2
+sentence-transformers==3.1.1
+statsmodels==0.14.4

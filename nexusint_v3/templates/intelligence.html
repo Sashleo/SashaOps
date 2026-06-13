@@ -1,0 +1,598 @@
+{% extends "base.html" %}
+{% block title %}Intelligence — SashaOps{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/marked@14.1.0/marked.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<style>
+  .module-card { position: relative; }
+  .module-info-btn {
+    position: absolute; top: 6px; right: 6px;
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 1px solid var(--border); background: var(--bg-3);
+    color: var(--text-muted); font-size: 11px; font-style: italic;
+    font-weight: 700; line-height: 1; cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: Georgia, serif;
+  }
+  .module-info-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .doc-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg-3); font-size: 0.82em; cursor: pointer; user-select: none;
+  }
+  .doc-chip:has(.doc-check:checked) { border-color: var(--accent); background: var(--bg-2); }
+  .doc-chip input { accent-color: var(--accent); }
+</style>
+<div id="page-content">
+
+<!-- ── Stage gate banner ──────────────────────────────────────────────────── -->
+{% if run_state and run_state.is_at_gate %}
+
+{% if run_state.stage == 'stage1_complete' %}
+<!-- ── Stage 1 Briefing Card ─────────────────────────────────────────────── -->
+<div class="card mb-24" id="stage-gate-banner" style="border-color:var(--accent)">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-16" style="border-bottom:1px solid var(--border); padding-bottom:12px">
+    <div>
+      <div style="color:var(--accent); font-weight:700; font-size:1.05em">✓ DATA COLLECTION COMPLETE</div>
+      <div style="color:var(--text-muted); font-size:0.82em; margin-top:2px">{{ run_state.stage_number }} — Review before proceeding to analysis</div>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center">
+      {% if run_state.data_summary and run_state.data_summary.market_sentiment %}
+      <span class="badge badge-gray">{{ run_state.data_summary.market_sentiment }}</span>
+      {% endif %}
+      <span class="badge {% if run_state.data_summary and run_state.data_summary.data_quality_score >= 0.8 %}badge-green{% elif run_state.data_summary and run_state.data_summary.data_quality_score >= 0.5 %}badge-yellow{% else %}badge-red{% endif %}">
+        {{ run_state.data_summary.quality_label() if run_state.data_summary else 'Unknown' }}
+      </span>
+    </div>
+  </div>
+
+  <!-- Two columns: sources | sample headlines -->
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:16px">
+
+    <!-- News Sources -->
+    <div>
+      <div style="font-size:0.7em; color:var(--text-dim); text-transform:uppercase; letter-spacing:1.2px; margin-bottom:8px">
+        News Sources
+        {% if run_state.data_summary %}
+        ({{ run_state.data_summary.sources_found|length }} ok · {{ run_state.data_summary.sources_failed|length }} failed)
+        {% endif %}
+      </div>
+      {% if run_state.data_summary and run_state.data_summary.source_details %}
+      <div style="max-height:210px; overflow-y:auto; font-size:0.82em">
+        {% for src in run_state.data_summary.source_details %}
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid var(--bg-3)">
+          <div style="color:{% if src.status == 'ok' %}var(--text-primary){% else %}var(--danger){% endif %}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:60%">
+            {% if src.status == 'ok' %}✓{% else %}✗{% endif %} {{ src.label }}
+          </div>
+          <div style="color:var(--text-dim); font-size:0.88em; flex-shrink:0; padding-left:8px">
+            {% if src.status == 'ok' %}
+            {{ src.headline_count }} hdl · {{ src.latency_ms }}ms
+            {% else %}
+            {{ src.error_msg[:30] if src.error_msg else 'failed' }}
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="color:var(--text-dim); font-size:0.82em">
+        {{ run_state.data_summary.headlines_collected if run_state.data_summary else 0 }} headlines from
+        {{ run_state.data_summary.sources_found|length if run_state.data_summary else 0 }} sources
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Sample Headlines -->
+    <div>
+      <div style="font-size:0.7em; color:var(--text-dim); text-transform:uppercase; letter-spacing:1.2px; margin-bottom:8px">
+        Sample Headlines (top {{ run_state.data_summary.sample_headlines|length if run_state.data_summary else 0 }} by relevance)
+      </div>
+      {% if run_state.data_summary and run_state.data_summary.sample_headlines %}
+      <div style="font-size:0.82em">
+        {% for headline in run_state.data_summary.sample_headlines %}
+        <div style="padding:4px 0; border-bottom:1px solid var(--bg-3); color:var(--text-secondary); line-height:1.35">
+          · {{ headline }}
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="color:var(--text-dim); font-size:0.82em">No headlines collected yet</div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <!-- Stats row -->
+  <div style="display:flex; flex-wrap:wrap; gap:20px; padding:10px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); margin-bottom:14px; font-size:0.82em">
+    <div>
+      <span style="color:var(--text-dim)">Market Data</span>
+      <span style="margin-left:6px; color:{% if run_state.data_summary and run_state.data_summary.stock_data_available %}var(--accent){% else %}var(--warning){% endif %}">
+        {% if run_state.data_summary and run_state.data_summary.stock_data_available %}✓ Available{% else %}✗ Unavailable{% endif %}
+      </span>
+    </div>
+    <div>
+      <span style="color:var(--text-dim)">Web Search</span>
+      <span style="margin-left:6px; color:var(--text-secondary)">
+        {{ run_state.data_summary.search_results_count if run_state.data_summary else 0 }} results
+      </span>
+    </div>
+    <div>
+      <span style="color:var(--text-dim)">Website</span>
+      <span style="margin-left:6px; color:var(--text-secondary)">
+        {% if run_state.data_summary and run_state.data_summary.website_chars_scraped > 0 %}
+        {{ run_state.data_summary.website_chars_scraped }} chars scraped
+        {% else %}
+        not scraped
+        {% endif %}
+      </span>
+    </div>
+    {% if run_state.data_summary and run_state.data_summary.gaps %}
+    <div style="margin-left:auto">
+      <span style="color:var(--warning)">⚠ {{ run_state.data_summary.gaps | join(' · ') }}</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Analyst note -->
+  {% if run_state.data_summary and run_state.data_summary.analyst_note %}
+  <div style="background:var(--bg-2); border:1px solid var(--border); border-radius:var(--radius); padding:10px 14px; margin-bottom:14px">
+    <div style="font-size:0.68em; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px">Analyst Assessment</div>
+    <div style="font-size:0.83em; color:var(--text-secondary); line-height:1.5">{{ run_state.data_summary.analyst_note }}</div>
+  </div>
+  {% endif %}
+
+  <!-- Action -->
+  <button class="stage-gate-btn"
+          hx-post="/intelligence/gate/{{ run_state.run_id }}/approve"
+          hx-target="#page-content"
+          hx-swap="innerHTML"
+          hx-select="#page-content">
+    {{ run_state.next_action_label }}
+  </button>
+
+</div><!-- Stage 1 briefing card -->
+
+{% else %}
+<!-- ── Stage 2 Gate ───────────────────────────────────────────────────────── -->
+<div class="stage-gate" id="stage-gate-banner">
+  <div class="stage-gate-header">
+    <div class="stage-gate-title">✓ ANALYSIS COMPLETE</div>
+    <div class="stage-gate-number">{{ run_state.stage_number }}</div>
+  </div>
+  <div class="stage-gate-summary">{{ run_state.gate_message }}</div>
+  {% if run_state.analysis_summary and run_state.analysis_summary.key_findings %}
+  <div style="margin:10px 0; font-size:0.82em; color:var(--text-muted)">
+    {% for kf in run_state.analysis_summary.key_findings[:3] %}
+    <div style="padding:3px 0">· {{ kf.finding }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <div style="font-size:0.82em; color:var(--text-muted); margin-bottom:16px">
+    Select modules to include in the report, then generate.
+  </div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+    <button class="stage-gate-btn"
+            hx-post="/intelligence/gate/{{ run_state.run_id }}/approve"
+            hx-target="#page-content"
+            hx-swap="innerHTML"
+            hx-select="#page-content">
+      {{ run_state.next_action_label }}
+    </button>
+  </div>
+</div>
+{% endif %}
+
+{% endif %}<!-- end is_at_gate -->
+
+<!-- ── Regenerate Report banner (shown after run completes) ──────────────────── -->
+{% if run_state and run_state.stage in ('complete',) %}
+<div style="margin-bottom:16px; padding:12px 16px; background:var(--bg-2);
+            border:1px solid var(--border); border-radius:var(--radius);
+            display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px">
+  <div style="font-size:0.82em; color:var(--text-muted)">
+    Report generated. Not satisfied? Regenerate from current analysis without re-running data collection.
+    {% if regen_triggered %}<span style="color:var(--accent); margin-left:8px">✓ Regenerating…</span>{% endif %}
+  </div>
+  <button class="btn"
+          hx-post="/intelligence/gate/{{ run_state.run_id }}/regenerate-report"
+          hx-target="#page-content"
+          hx-swap="innerHTML"
+          hx-select="#page-content"
+          style="font-size:0.82em; white-space:nowrap">
+    ↺ Regenerate Report
+  </button>
+</div>
+{% endif %}
+
+<!-- ── Run progress banner (when actively running) ─────────────────────────── -->
+{% if run_state and run_state.is_running %}
+<div class="card mb-24" style="border-color: var(--warning)">
+  <div class="flex items-center justify-between mb-16">
+    <div style="color:var(--warning); font-weight:600">
+      <span class="spinner"></span>&nbsp; {{ run_state.stage_label }}
+    </div>
+    <div class="badge badge-yellow">{{ run_state.stage_number }}</div>
+  </div>
+  <div class="progress-bar">
+    <div class="progress-fill" style="width:{{ run_state.progress_pct }}%"></div>
+  </div>
+  <div style="margin-top:8px; font-size:0.8em; color:var(--text-muted)">
+    {{ run_state.modules_complete|length }} / {{ run_state.modules_requested|length }} modules complete
+    {% if run_state.modules_failed %}
+    · {{ run_state.modules_failed|length }} failed
+    {% endif %}
+  </div>
+  <!-- Auto-poll: swaps the entire #page-content so the progress banner AND the
+       stage-gate banner (both rendered outside #main-panel) update live. Swapping
+       only #main-panel left the banners stale until a manual refresh. -->
+  <div hx-get="/intelligence/run/{{ run_state.run_id }}/status"
+       hx-trigger="every 4s"
+       hx-target="#page-content"
+       hx-swap="outerHTML"
+       hx-select="#page-content"
+       id="auto-poll">
+  </div>
+</div>
+{% endif %}
+
+<div id="main-panel">
+
+<!-- ── Page header ───────────────────────────────────────────────────────── -->
+<div class="page-header">
+  <div>
+    <div class="page-title">Intelligence</div>
+    <div class="page-subtitle">
+      {% if active_client %}{{ active_client.name }}{% else %}Select a client to begin{% endif %}
+    </div>
+  </div>
+  {% if active_client and (not run_state or run_state.stage in ('complete', 'failed', 'not_started')) %}
+  <div class="flex gap-8 items-center">
+    <!-- Run mode toggle -->
+    <div class="run-mode-toggle">
+      <div class="run-mode-option {% if run_mode != 'express' %}active{% endif %}"
+           onclick="setRunMode('gated')" id="mode-gated">Gated</div>
+      <div class="run-mode-option {% if run_mode == 'express' %}active{% endif %}"
+           onclick="setRunMode('express')" id="mode-express">Express</div>
+    </div>
+    <input type="hidden" id="run-mode-input" value="{{ run_mode or 'gated' }}">
+    <button class="btn btn-primary" onclick="startRun()">
+      ⚡ Run Analysis
+    </button>
+    <button class="btn" onclick="runFinancialAnalysis()"
+            title="Instant local financial analysis — no AI, no wait"
+            style="font-size:0.85em">
+      📊 Financial Analysis
+    </button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Quick financial analysis result (HTMX target) -->
+<div id="quick-financial-result" style="margin-top:4px"></div>
+
+{% if not active_client %}
+<!-- No client selected -->
+<div class="empty-state">
+  <div class="empty-icon">⚡</div>
+  <div class="empty-text">SashaOps hasn't selected a client yet. Choose a client from the sidebar to begin.</div>
+  <a href="/dashboard" class="btn btn-primary">Go to Dashboard →</a>
+</div>
+
+{% else %}
+
+<!-- ── Analysis launcher ───────────────────────────────────────────────────── -->
+<div style="margin-bottom:16px">
+  <div class="flex items-center justify-between mb-16">
+    <div>
+      <label class="form-label">Business to Analyse</label>
+      <input type="text" id="business-input" class="form-input"
+             placeholder="e.g. Dangote Cement PLC"
+             value="{{ last_business or '' }}"
+             style="width:320px">
+    </div>
+    <div>
+      <label class="form-label">Market</label>
+      <div class="form-input" style="width:200px; display:flex; align-items:center; gap:8px; background:var(--bg-3); cursor:default">
+        🇵🇰 Pakistan (PSX)
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Client documents (for private/unlisted company analysis) ─────────────── -->
+{% if client_documents %}
+<div style="margin-bottom:8px; font-size:0.8em; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px">
+  Include Documents
+  <span style="margin-left:12px; text-transform:none; letter-spacing:0; font-size:0.9em; color:var(--text-dim)">
+    Uploaded files for this client are analysed as the authoritative source.
+    <a href="#" onclick="docSelectAll(true); return false">All</a> ·
+    <a href="#" onclick="docSelectAll(false); return false">None</a>
+  </span>
+</div>
+<div id="doc-checklist" hx-preserve="true"
+     style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px">
+  {% for doc in client_documents %}
+  <label class="doc-chip">
+    <input type="checkbox" class="doc-check" value="{{ doc.id }}" checked>
+    <span>📄 {{ doc.filename }}</span>
+    <span style="color:var(--text-dim); font-size:0.85em">{{ doc.doc_type }}</span>
+  </label>
+  {% endfor %}
+</div>
+{% else %}
+<div style="margin-bottom:18px; font-size:0.8em; color:var(--text-dim)">
+  No documents uploaded for this client.
+  <a href="/documents" style="color:var(--accent)">Upload financials or filings →</a>
+  to analyse a private / unlisted company.
+</div>
+{% endif %}
+
+<!-- ── Module selection ────────────────────────────────────────────────────── -->
+<div style="margin-bottom:8px; font-size:0.8em; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px">
+  Select Analysis Modules
+  <span style="margin-left:12px; text-transform:none; letter-spacing:0">
+    <a href="#" onclick="selectAll(); return false" style="font-size:0.9em">All</a> ·
+    <a href="#" onclick="selectNone(); return false" style="font-size:0.9em">None</a>
+  </span>
+</div>
+
+{% for group_name, group_modules in modules_by_group.items() %}
+<div style="margin-bottom:4px; font-size:0.7em; color:var(--text-dim); text-transform:uppercase; letter-spacing:1.5px; margin-top:12px">
+  {{ group_name }}
+</div>
+<div class="module-grid">
+  {% for module in group_modules %}
+  <div class="module-card selected"
+       data-module-id="{{ module.id }}"
+       style="--module-color: {{ module.color }}"
+       onclick="toggleModule(this)">
+    <button type="button" class="module-info-btn"
+            title="What does this analysis cover?"
+            onclick="showModuleInfo(event, '{{ module.id }}')">i</button>
+    <div class="module-icon">{{ module.icon }}</div>
+    <div class="module-label">{{ module.label }}</div>
+    <div class="module-desc">{{ module.description }}</div>
+    <div id="modinfo-{{ module.id }}" style="display:none"
+         data-label="{{ module.icon }} {{ module.label }}"
+         data-group="{{ module.group }}"
+         data-desc="{{ module.description }}"
+         data-prompt="{{ module.system_prompt }}"></div>
+    {% if run_state %}
+    <div class="module-status">
+      {% if module.id in run_state.modules_complete %}
+      <span class="status-complete">✓ Complete</span>
+      {% elif module.id in run_state.modules_failed %}
+      <span class="status-failed">✗ Failed</span>
+      {% elif module.id in run_state.modules_running %}
+      <span class="status-running"><span class="spinner"></span> Running</span>
+      {% else %}
+      <span class="status-pending">Pending</span>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+
+<!-- ── Module info modal ───────────────────────────────────────────────────── -->
+<div id="modinfo-overlay" onclick="if(event.target===this)closeModuleInfo()"
+     style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6);
+            z-index:1000; align-items:center; justify-content:center; padding:20px">
+  <div style="background:var(--bg-2); border:1px solid var(--border); border-radius:var(--radius);
+              max-width:620px; width:100%; max-height:80vh; overflow-y:auto; padding:22px 24px;
+              box-shadow:0 20px 60px rgba(0,0,0,0.5)">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:6px">
+      <div id="modinfo-title" style="font-size:1.15em; font-weight:700"></div>
+      <button type="button" onclick="closeModuleInfo()"
+              style="background:none; border:none; color:var(--text-muted); font-size:1.4em;
+                     cursor:pointer; line-height:1">×</button>
+    </div>
+    <div id="modinfo-group" style="font-size:0.72em; text-transform:uppercase; letter-spacing:1.2px;
+         color:var(--text-dim); margin-bottom:14px"></div>
+    <div style="font-size:0.7em; text-transform:uppercase; letter-spacing:1px; color:var(--text-dim); margin-bottom:4px">Summary</div>
+    <div id="modinfo-desc" style="font-size:0.9em; color:var(--text-secondary); line-height:1.5; margin-bottom:16px"></div>
+    <div style="font-size:0.7em; text-transform:uppercase; letter-spacing:1px; color:var(--text-dim); margin-bottom:4px">What this analysis covers</div>
+    <div id="modinfo-prompt" style="font-size:0.85em; color:var(--text-secondary); line-height:1.55; white-space:pre-wrap"></div>
+  </div>
+</div>
+
+<!-- ── Results area ────────────────────────────────────────────────────────── -->
+{% if analysis_results %}
+<div id="results-area" style="margin-top:32px">
+  <div style="margin-bottom:12px; font-size:0.8em; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px">
+    Analysis Results — {{ last_business }}
+  </div>
+
+  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px">
+    {% for mod_id, result in analysis_results.items() %}
+    {% set module = all_modules.get(mod_id) %}
+    {% if module %}
+    <button class="btn {% if loop.first %}btn-primary{% endif %}"
+            onclick="showResult('{{ mod_id }}')"
+            id="tab-{{ mod_id }}">
+      {{ module.icon }} {{ module.label }}
+    </button>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  {% for mod_id, result in analysis_results.items() %}
+  <div id="result-{{ mod_id }}" class="analysis-output" style="{% if not loop.first %}display:none{% endif %}">
+    {{ result | safe }}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Data Sources card (shown when no run is active) ──────────────────────── -->
+{% if active_client and (not run_state or run_state.stage in ('complete', 'failed', 'not_started')) %}
+<div class="card mt-24" style="margin-top:28px">
+  <div style="font-size:0.7em; color:var(--text-dim); text-transform:uppercase;
+              letter-spacing:1.5px; margin-bottom:14px">
+    Data Sources
+    <span style="text-transform:none; letter-spacing:0; margin-left:10px; font-size:0.9em">
+      Refresh government and regulatory data between analyses
+    </span>
+  </div>
+  <div id="scraper-status-card"
+       hx-get="/intelligence/scraper-status"
+       hx-trigger="load"
+       hx-target="this"
+       hx-swap="outerHTML">
+    <div style="color:var(--text-dim); font-size:0.82em">Loading data source status…</div>
+  </div>
+</div>
+{% endif %}
+
+{% endif %}
+
+</div><!-- #main-panel -->
+
+</div><!-- #page-content -->
+
+<script>
+// Module selection
+function toggleModule(el) {
+  el.classList.toggle('selected');
+}
+
+function selectAll() {
+  document.querySelectorAll('.module-card').forEach(el => el.classList.add('selected'));
+}
+
+function selectNone() {
+  document.querySelectorAll('.module-card').forEach(el => el.classList.remove('selected'));
+}
+
+// Run mode toggle
+function setRunMode(mode) {
+  document.getElementById('run-mode-input').value = mode;
+  document.getElementById('mode-gated').classList.toggle('active', mode === 'gated');
+  document.getElementById('mode-express').classList.toggle('active', mode === 'express');
+}
+
+// Start analysis run
+// Uses hx-select so HTMX extracts only #page-content from the full-page response,
+// preventing the sidebar from being injected into the content area.
+function startRun() {
+  const business = document.getElementById('business-input').value.trim();
+  if (!business) {
+    showToast('Enter a business name first.', 'error');
+    return;
+  }
+
+  const modules = [...document.querySelectorAll('.module-card.selected')]
+    .map(el => el.dataset.moduleId);
+
+  if (!modules.length) {
+    showToast('Select at least one analysis module.', 'error');
+    return;
+  }
+
+  const mode   = document.getElementById('run-mode-input').value;
+  const docIds = Array.from(document.querySelectorAll('.doc-check:checked')).map(c => c.value);
+
+  htmx.ajax('POST', '/intelligence/start', {
+    target: '#page-content',
+    swap:   'innerHTML',
+    select: '#page-content',
+    values: {
+      business_name: business,
+      modules: modules.join(','),
+      mode: mode,
+      document_ids: docIds.join(','),
+    }
+  });
+}
+
+// Standalone financial analysis (local, no Gemini, instant)
+function runFinancialAnalysis() {
+  const business = document.getElementById('business-input').value.trim();
+  if (!business) {
+    showToast('Enter a company name or PSX ticker first.', 'error');
+    return;
+  }
+  const target = document.getElementById('quick-financial-result');
+  target.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:0.85em">'
+                   + '<span class="spinner"></span> Running local financial analysis…</div>';
+  const fd = new FormData();
+  fd.append('business', business);
+  fd.append('region', 'pakistan');
+  fetch('/intelligence/financial-analysis', { method: 'POST', body: fd })
+    .then(r => r.text())
+    .then(html => { target.innerHTML = html; })
+    .catch(err => {
+      target.innerHTML = '<div class="alert alert-error">Request failed: ' + err + '</div>';
+    });
+}
+
+// Document selection helpers
+function docSelectAll(state) {
+  document.querySelectorAll('.doc-check').forEach(c => c.checked = state);
+}
+
+// Module info popup — explains exactly what each analysis produces
+function showModuleInfo(evt, modId) {
+  evt.stopPropagation();   // don't toggle module selection
+  const src = document.getElementById('modinfo-' + modId);
+  if (!src) return;
+  document.getElementById('modinfo-title').textContent = src.dataset.label || 'Module';
+  document.getElementById('modinfo-group').textContent = src.dataset.group || '';
+  document.getElementById('modinfo-desc').textContent  = src.dataset.desc || '';
+  document.getElementById('modinfo-prompt').textContent = src.dataset.prompt || '';
+  document.getElementById('modinfo-overlay').style.display = 'flex';
+}
+function closeModuleInfo() {
+  document.getElementById('modinfo-overlay').style.display = 'none';
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModuleInfo(); });
+
+// Result tabs
+function showResult(modId) {
+  document.querySelectorAll('[id^="result-"]').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('[id^="tab-"]').forEach(el => el.classList.remove('btn-primary'));
+  const el = document.getElementById('result-' + modId);
+  if (el) {
+    el.style.display = 'block';
+    _renderMarkdown(el);
+  }
+  const tab = document.getElementById('tab-' + modId);
+  if (tab) tab.classList.add('btn-primary');
+}
+
+function _renderMarkdown(el) {
+  if (!el || el.dataset.rendered) return;
+  if (typeof marked === 'undefined') return;
+  const raw = el.textContent || el.innerText;
+  if (!raw.trim()) return;
+  marked.setOptions({ breaks: true, gfm: true });
+  el.innerHTML = marked.parse(raw);
+  el.dataset.rendered = '1';
+  // Apply inline styles to markdown elements for the dark theme
+  el.querySelectorAll('h1,h2,h3,h4').forEach(h => {
+    h.style.cssText = 'color:var(--accent);margin:16px 0 8px;font-size:' +
+      (h.tagName === 'H1' ? '1.1em' : h.tagName === 'H2' ? '1em' : '0.95em');
+  });
+  el.querySelectorAll('p').forEach(p => p.style.cssText = 'margin:8px 0;line-height:1.65;color:var(--text-secondary)');
+  el.querySelectorAll('ul,ol').forEach(l => l.style.cssText = 'margin:8px 0 8px 20px;color:var(--text-secondary)');
+  el.querySelectorAll('li').forEach(li => li.style.cssText = 'margin:3px 0;line-height:1.55');
+  el.querySelectorAll('strong').forEach(s => s.style.color = 'var(--text-primary)');
+  el.querySelectorAll('blockquote').forEach(bq => {
+    bq.style.cssText = 'border-left:3px solid var(--accent);margin:10px 0;padding:4px 12px;color:var(--text-muted)';
+  });
+}
+
+// Render markdown in the first visible result tab on load
+document.addEventListener('DOMContentLoaded', function() {
+  const first = document.querySelector('.analysis-output:not([style*="display:none"])');
+  if (first) _renderMarkdown(first);
+});
+</script>
+
+{% endblock %}

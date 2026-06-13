@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Reports — SashaOps{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <div class="page-title">📄 Reports</div>
+    <div class="page-subtitle">
+      {% if active_client %}{{ active_client.name }}{% else %}Select a client{% endif %}
+      · {{ reports|length if reports else 0 }} reports generated
+    </div>
+  </div>
+  {% if active_client %}
+  <a href="/intelligence" class="btn btn-primary">Generate Report →</a>
+  {% endif %}
+</div>
+
+{% if not active_client %}
+<div class="empty-state">
+  <div class="empty-icon">📄</div>
+  <div class="empty-text">SashaOps hasn't selected a client yet. Choose a client to view their reports.</div>
+  <a href="/dashboard" class="btn btn-primary">Go to Dashboard →</a>
+</div>
+
+{% elif not reports %}
+<div class="empty-state">
+  <div class="empty-icon">📄</div>
+  <div class="empty-text">SashaOps hasn't generated any reports yet.</div>
+  <a href="/intelligence" class="btn btn-primary">Generate your first report →</a>
+</div>
+
+{% else %}
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Business</th>
+      <th>Modules</th>
+      <th>Formats</th>
+      <th>Signed</th>
+      <th>Date</th>
+      <th>Download</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for report in reports %}
+    <tr>
+      <td style="font-weight:500">{{ report.business_name }}</td>
+      <td style="color:var(--text-muted)">
+        {{ report.modules_included|length if report.modules_included else 0 }} modules
+      </td>
+      <td>
+        {% if report.pdf_available %}<span class="badge badge-blue">PDF</span>{% endif %}
+        {% if report.docx_available %}<span class="badge badge-gray">DOCX</span>{% endif %}
+      </td>
+      <td>
+        {% if report.signed %}
+        <span class="badge badge-green" title="{{ report.signing_algo }}">✓ Signed</span>
+        {% else %}
+        <span class="badge badge-gray">Unsigned</span>
+        {% endif %}
+      </td>
+      <td style="color:var(--text-muted)">{{ report.created_at[:10] }}</td>
+      <td>
+        <div class="flex gap-8">
+          {% if report.pdf_available %}
+          <a href="/reports/{{ report.id }}/pdf" class="btn" style="padding:4px 10px; font-size:0.78em">PDF</a>
+          {% endif %}
+          {% if report.docx_available %}
+          <a href="/reports/{{ report.id }}/docx" class="btn" style="padding:4px 10px; font-size:0.78em">DOCX</a>
+          {% endif %}
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% endblock %}

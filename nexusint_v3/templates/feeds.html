@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}News Feeds — SashaOps{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <div class="page-title">📡 News Feeds</div>
+    <div class="page-subtitle">
+      Regional intelligence from {{ feed_count or 0 }} sources
+      {% if cache_note %} · {{ cache_note }}{% endif %}
+      {% if last_fetched %} · {{ last_fetched }}{% endif %}
+    </div>
+  </div>
+  <div class="flex gap-8">
+    <button class="btn btn-primary"
+            hx-post="/feeds/fetch"
+            hx-target="#feed-results"
+            hx-swap="innerHTML"
+            hx-indicator="#feed-loading">
+      Refresh Feeds
+    </button>
+  </div>
+</div>
+
+<div id="feed-loading" class="htmx-indicator" style="margin-bottom:12px; color:var(--text-muted); font-size:0.85em">
+  <span class="spinner"></span> Fetching feeds...
+</div>
+
+<!-- Classification / category filter bar -->
+<div id="class-filter" class="flex gap-8 mb-8" style="flex-wrap:wrap">
+  <button class="btn btn-primary" onclick="setFilter('class','all',this)">All</button>
+  <button class="btn" onclick="setFilter('class','THREAT',this)">Threats</button>
+  <button class="btn" onclick="setFilter('class','OPPORTUNITY',this)">Opportunities</button>
+  <button class="btn" onclick="setFilter('cat','business',this)">Business</button>
+  <button class="btn" onclick="setFilter('cat','world',this)">World</button>
+  <button class="btn" onclick="setFilter('cat','tech',this)">Tech</button>
+</div>
+
+<!-- Source filter bar — built dynamically from loaded items -->
+<div id="source-filter" class="flex gap-8 mb-16" style="flex-wrap:wrap; font-size:0.78em">
+  <button class="btn btn-primary" onclick="setSource('all',this)" style="font-size:inherit">All sources</button>
+</div>
+
+<div id="feed-results">
+  {% if items %}
+  {% for item in items %}
+  <div class="feed-item feed-{{ item.classification|lower }}"
+       data-classification="{{ item.classification }}"
+       data-category="{{ item.category }}"
+       data-feed-id="{{ item.feed_id }}">
+    <div class="feed-item-title">
+      <a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title }}</a>
+    </div>
+    {% if item.summary %}
+    <div style="font-size:0.82em; color:var(--text-muted); margin:4px 0 6px">{{ item.summary[:200] }}</div>
+    {% endif %}
+    <div class="feed-item-meta">
+      <span>{{ item.feed_label }}</span>
+      {% if item.published %}<span>{{ item.published[:10] }}</span>{% endif %}
+      <span class="badge {% if item.classification == 'THREAT' %}badge-red{% elif item.classification == 'OPPORTUNITY' %}badge-green{% else %}badge-gray{% endif %}">
+        {{ item.classification }}
+      </span>
+      {% if item.magnitude > 0 %}
+      <span style="color:var(--text-dim)">{{ item.magnitude }}/10</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-icon">📡</div>
+    <div class="empty-text">SashaOps hasn't fetched any feeds yet. Select a region and click Refresh Feeds.</div>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+// Active filter state
+let _classFilter = 'all';
+let _catFilter   = 'all';
+let _sourceFilter = 'all';
+
+function _applyFilters() {
+  document.querySelectorAll('#feed-results .feed-item').forEach(el => {
+    const matchClass  = _classFilter === 'all' || el.dataset.classification === _classFilter;
+    const matchCat    = _catFilter   === 'all' || el.dataset.category       === _catFilter;
+    const matchSource = _sourceFilter === 'all' || el.dataset.feedId        === _sourceFilter;
+    el.style.display  = (matchClass && matchCat && matchSource) ? '' : 'none';
+  });
+}
+
+function setFilter(type, value, btn) {
+  if (type === 'class') { _classFilter = value; _catFilter = 'all'; }
+  else                  { _catFilter = value;   _classFilter = 'all'; }
+  document.querySelectorAll('#class-filter .btn').forEach(b => b.classList.remove('btn-primary'));
+  btn.classList.add('btn-primary');
+  _applyFilters();
+}
+
+function setSource(feedId, btn) {
+  _sourceFilter = feedId;
+  document.querySelectorAll('#source-filter .btn').forEach(b => b.classList.remove('btn-primary'));
+  btn.classList.add('btn-primary');
+  _applyFilters();
+}
+
+function _buildSourceBar() {
+  const seen = new Map(); // feedId → label
+  document.querySelectorAll('#feed-results .feed-item[data-feed-id]').forEach(el => {
+    const id = el.dataset.feedId;
+    if (id && !seen.has(id)) {
+      // derive label from the first meta span inside this item
+      const label = el.querySelector('.feed-item-meta span')?.textContent?.trim() || id;
+      seen.set(id, label);
+    }
+  });
+  const bar = document.getElementById('source-filter');
+  // remove old source chips except "All sources"
+  [...bar.querySelectorAll('[data-src-chip]')].forEach(b => b.remove());
+  seen.forEach((label, id) => {
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.style.fontSize = 'inherit';
+    btn.textContent = label;
+    btn.dataset.srcChip = id;
+    btn.onclick = () => setSource(id, btn);
+    bar.appendChild(btn);
+  });
+}
+
+// Rebuild source bar after HTMX swaps new feed content
+document.body.addEventListener('htmx:afterSwap', e => {
+  if (e.detail.target.id === 'feed-results') {
+    _buildSourceBar();
+    _sourceFilter = 'all';
+    document.querySelectorAll('#source-filter .btn').forEach((b,i) => {
+      b.classList.toggle('btn-primary', i === 0);
+    });
+    _applyFilters();
+  }
+});
+
+// Build on initial page load if items are already present
+document.addEventListener('DOMContentLoaded', _buildSourceBar);
+</script>
+
+{% endblock %}

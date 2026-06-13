@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(docker compose *)",
+      "Bash(docker exec sashaops python -c ' *)",
+      "Bash(python -)",
+      "Bash(python -m compileall -q .)",
+      "Bash(python -m compileall -q intelligence/gov_scrapers intelligence/keyword_engine.py intelligence/query_templates.py intelligence/psx_financials.py intelligence/psx_company_profile.py database/psx_data.py database/macro_data.py)",
+      "Bash(python -m pyflakes routers/intelligence.py routers/markets.py routers/dashboard.py routers/feeds.py database/*.py intelligence/keyword_engine.py intelligence/query_templates.py intelligence/psx_financials.py intelligence/psx_company_profile.py intelligence/browser.py intelligence/stocks.py intelligence/gov_scrapers/*.py core/run_manager.py config/regions.py)"
+    ]
+  }
+}

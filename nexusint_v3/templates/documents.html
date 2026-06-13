@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Documents — SashaOps{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <div class="page-title">📂 Documents</div>
+    <div class="page-subtitle">
+      {% if active_client %}{{ active_client.name }}{% else %}Select a client{% endif %}
+      · {{ documents|length if documents else 0 }} documents
+    </div>
+  </div>
+  {% if active_client %}
+  <button class="btn btn-primary" onclick="document.getElementById('upload-modal').style.display='flex'">
+    + Upload Document
+  </button>
+  {% endif %}
+</div>
+
+{% if not active_client %}
+<div class="empty-state">
+  <div class="empty-icon">📂</div>
+  <div class="empty-text">SashaOps hasn't selected a client yet. Choose a client to manage their documents.</div>
+  <a href="/dashboard" class="btn btn-primary">Go to Dashboard →</a>
+</div>
+
+{% elif not documents %}
+<div class="empty-state">
+  <div class="empty-icon">📄</div>
+  <div class="empty-text">SashaOps hasn't found any documents yet. Upload financial statements, contracts, or reports to enhance analysis.</div>
+  <button class="btn btn-primary" onclick="document.getElementById('upload-modal').style.display='flex'">
+    Upload your first document →
+  </button>
+</div>
+
+{% else %}
+<div style="display:flex; align-items:center; gap:10px; margin-bottom:12px">
+  <label style="font-size:0.82em; color:var(--text-muted); display:flex; align-items:center; gap:6px">
+    <input type="checkbox" id="doc-select-all-cb" onclick="docToggleAll(this.checked)"> Select all
+  </label>
+  <span style="flex:1"></span>
+  <button class="btn" style="font-size:0.8em" onclick="deleteSelected()">Delete Selected</button>
+  <button class="btn btn-danger" style="font-size:0.8em" onclick="deleteAllDocs()">Delete All</button>
+</div>
+<form id="bulk-delete-form" method="POST" action="/documents/delete-bulk" style="display:none">
+  <input type="hidden" name="doc_ids" id="bulk-doc-ids">
+  <input type="hidden" name="scope" id="bulk-scope" value="selected">
+</form>
+<table class="data-table">
+  <thead>
+    <tr>
+      <th style="width:28px"></th>
+      <th>File</th>
+      <th>Type</th>
+      <th>Size</th>
+      <th>Uploaded</th>
+      <th>Analysed</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for doc in documents %}
+    <tr>
+      <td><input type="checkbox" class="doc-row-check" value="{{ doc.id }}"></td>
+      <td>{{ doc.filename }}</td>
+      <td><span class="badge badge-gray">{{ doc.doc_type or '?' }}</span></td>
+      <td style="color:var(--text-muted)">{{ (doc.file_size / 1024)|round(1) }} KB</td>
+      <td style="color:var(--text-muted)">{{ doc.upload_at[:10] }}</td>
+      <td>
+        {% if doc.last_analysed %}
+        <span class="badge badge-green">✓</span>
+        {% endif %}
+      </td>
+      <td>
+        <button class="btn btn-danger" style="padding:3px 10px; font-size:0.78em"
+                hx-delete="/documents/{{ doc.id }}"
+                hx-confirm="Delete this document?"
+                hx-target="closest tr"
+                hx-swap="outerHTML swap:0.3s">
+          Delete
+        </button>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<!-- Upload modal -->
+<div id="upload-modal"
+     style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7);
+            align-items:center; justify-content:center; z-index:1000">
+  <div class="card" style="width:100%; max-width:480px; margin:20px">
+    <div class="flex items-center justify-between mb-16">
+      <div style="font-weight:600">Upload Document</div>
+      <button onclick="document.getElementById('upload-modal').style.display='none'" class="btn" style="padding:4px 10px">✕</button>
+    </div>
+
+    <form method="POST" action="/documents/upload" enctype="multipart/form-data">
+      <div class="form-group">
+        <label class="form-label">File (PDF, DOCX, XLSX, CSV, TXT — max 50MB)</label>
+        <input type="file" name="file" class="form-input"
+               accept=".pdf,.docx,.xlsx,.csv,.txt" required>
+      </div>
+      <div style="font-size:0.78em; color:var(--text-muted); margin-bottom:16px">
+        Files are encrypted with your client's key before storage.
+      </div>
+      <div class="flex gap-8">
+        <button type="submit" class="btn btn-primary">Upload &amp; Encrypt</button>
+        <button type="button" onclick="document.getElementById('upload-modal').style.display='none'" class="btn">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function docToggleAll(state) {
+  document.querySelectorAll('.doc-row-check').forEach(c => c.checked = state);
+}
+function _selectedDocIds() {
+  return Array.from(document.querySelectorAll('.doc-row-check:checked')).map(c => c.value);
+}
+function deleteSelected() {
+  const ids = _selectedDocIds();
+  if (!ids.length) { alert('Select at least one document to delete.'); return; }
+  if (!confirm('Delete ' + ids.length + ' selected document(s)? This cannot be undone.')) return;
+  document.getElementById('bulk-doc-ids').value = ids.join(',');
+  document.getElementById('bulk-scope').value = 'selected';
+  document.getElementById('bulk-delete-form').submit();
+}
+function deleteAllDocs() {
+  if (!confirm('Delete ALL documents for this client? This cannot be undone.')) return;
+  document.getElementById('bulk-scope').value = 'all';
+  document.getElementById('bulk-delete-form').submit();
+}
+</script>
+
+{% endblock %}

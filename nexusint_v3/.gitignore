@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+data/nexusint.db
+data/documents/
+*.db
+*.db-wal
+*.db-shm
+reports/generated/
+static/js/htmx.min.js
