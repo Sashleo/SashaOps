@@ -25,6 +25,8 @@ from core.run_manager import (
     advance_to_stage1, complete_stage1, complete_stage2,
     mark_module_running, mark_module_complete, mark_module_failed,
     fail_run, cancel_run,
+    register_task, unregister_task, clear_cancellation,
+    check_cancelled, is_cancelled, RunCancelled,
     RunMode, RunStage, DataCollectionSummary, AnalysisSummary,
 )
 from core.ai_client import call_gemini_raw
@@ -153,11 +155,13 @@ async def start_analysis(
     )
     run_state = advance_to_stage1(run_state)
 
-    # Run Stage 1 in background
-    background_tasks.add_task(
-        _run_stage1,
-        run_state.run_id, client_id, business_name, region_id, module_list, client_key,
-        doc_ids,
+    # Run Stage 1 in background (registered so it can be cancelled)
+    _launch_stage(
+        run_state.run_id,
+        _run_stage1(
+            run_state.run_id, client_id, business_name, region_id, module_list,
+            client_key, doc_ids,
+        ),
     )
 
     # Return progress view
@@ -218,13 +222,18 @@ async def run_status(request: Request, run_id: str):
 
 @router.post("/run/{run_id}/cancel", response_class=HTMLResponse)
 async def cancel_run_endpoint(request: Request, run_id: str):
-    """Cancel a running or stuck analysis — marks it FAILED immediately."""
+    """
+    Cancel a running or stuck analysis. This (1) sets the cooperative cancel flag,
+    (2) force-cancels the running asyncio task, and (3) marks the run FAILED.
+    Returns an HX-Redirect so the browser reloads /intelligence cleanly — this
+    stops the 4-second auto-poll and shows a fresh page ready for a new run.
+    """
     require_session(request)
     cancel_run(run_id)
+    # HX-Redirect makes htmx do a full client-side navigation to a clean page.
     return HTMLResponse(
-        "<div class='alert alert-warning' hx-get='' hx-trigger='load delay:1s' hx-target='body'>"
-        "Run cancelled. <a href='/intelligence' class='font-bold underline'>Start new analysis</a>."
-        "</div>"
+        "<div class='alert alert-warning'>Run cancelled.</div>",
+        headers={"HX-Redirect": "/intelligence"},
     )
 
 
@@ -246,17 +255,22 @@ async def approve_gate(
 
     if run_state.stage == RunStage.STAGE1_COMPLETE:
         run_state = approve_stage1(run_id)
-        background_tasks.add_task(
-            _run_stage2,
-            run_id, run_state.client_id, run_state.business_name,
-            "pakistan", run_state.modules_pending, client_key,
+        _launch_stage(
+            run_id,
+            _run_stage2(
+                run_id, run_state.client_id, run_state.business_name,
+                "pakistan", run_state.modules_pending, client_key,
+            ),
         )
     elif run_state.stage == RunStage.STAGE2_COMPLETE:
         mods = selected_modules.split(",") if selected_modules else None
         run_state = approve_stage2(run_id, mods)
-        background_tasks.add_task(
-            _run_stage3, run_id, run_state.client_id, run_state.business_name,
-            run_state.modules_complete, client_key,
+        _launch_stage(
+            run_id,
+            _run_stage3(
+                run_id, run_state.client_id, run_state.business_name,
+                run_state.modules_complete, client_key,
+            ),
         )
 
     modules_by_group = get_modules_by_group()
@@ -293,9 +307,12 @@ async def regenerate_report(
         return HTMLResponse("<div class='alert alert-error'>Run not found.</div>")
 
     client_key = _derive_client_key(run_state.client_id)
-    background_tasks.add_task(
-        _run_stage3, run_id, run_state.client_id, run_state.business_name,
-        run_state.modules_complete or run_state.modules_requested, client_key,
+    _launch_stage(
+        run_id,
+        _run_stage3(
+            run_id, run_state.client_id, run_state.business_name,
+            run_state.modules_complete or run_state.modules_requested, client_key,
+        ),
     )
 
     modules_by_group = get_modules_by_group()
@@ -327,6 +344,31 @@ async def regenerate_report(
     })
 
 
+# ── Background stage launcher ─────────────────────────────────────────────────
+
+def _launch_stage(run_id: str, coro):
+    """
+    Launch a stage worker coroutine as a registered, self-cleaning asyncio task.
+
+    Registering the task lets cancel_run() force-cancel it. The done-callback
+    unregisters it and clears any cancellation flag so a later run with a reused
+    id starts clean. Using create_task (instead of BackgroundTasks) gives us the
+    task handle needed for cancellation.
+    """
+    async def _wrapped():
+        try:
+            await coro
+        except (RunCancelled, asyncio.CancelledError):
+            log.info("Stage task cancelled", run_id=run_id)
+        finally:
+            unregister_task(run_id)
+            clear_cancellation(run_id)
+
+    task = asyncio.create_task(_wrapped())
+    register_task(run_id, task)
+    return task
+
+
 # ── Background stage workers ──────────────────────────────────────────────────
 
 async def _run_stage1(run_id, client_id, business_name, region_id, module_list,
@@ -339,6 +381,7 @@ async def _run_stage1(run_id, client_id, business_name, region_id, module_list,
     block the entire stage.
     """
     try:
+        check_cancelled(run_id)
         loop        = asyncio.get_running_loop()
         summary     = DataCollectionSummary()
 
@@ -482,6 +525,8 @@ async def _run_stage1(run_id, client_id, business_name, region_id, module_list,
             _bounded(_local_check, timeout_s=25),
             return_exceptions=False,
         )
+
+        check_cancelled(run_id)
 
         # ── Unpack market data ────────────────────────────────────────────────
         if market_res is not None:
@@ -687,6 +732,8 @@ async def _run_stage1(run_id, client_id, business_name, region_id, module_list,
             summary.sources_found.append("financials:document_extracted")
             log.info("Financial modules will use locally extracted document data", business=business_name)
 
+        check_cancelled(run_id)
+
         run_state = load_run(run_id)
         if run_state:
             run_state = complete_stage1(run_state, summary)
@@ -698,8 +745,11 @@ async def _run_stage1(run_id, client_id, business_name, region_id, module_list,
                     run_state.modules_pending, client_key,
                 )
 
+    except (RunCancelled, asyncio.CancelledError):
+        log.info("Stage 1 cancelled by user — aborting", run_id=run_id)
+        raise
     except Exception as e:
-        log.error("Stage 1 failed", run_id=run_id, error=str(e))
+        log.error("Stage 1 crashed", run_id=run_id, error=str(e), exc_info=True)
         fail_run(run_id, f"Stage 1 error: {e}")
 
 
@@ -720,6 +770,7 @@ async def _run_stage2(run_id, client_id, business_name, region_id, module_list, 
     never in parallel threads — this is required for thread safety.
     """
     try:
+        check_cancelled(run_id)
         loop       = asyncio.get_running_loop()
         region     = get_region(region_id)
         client_row = get_client(client_id) or {}
@@ -1079,8 +1130,11 @@ async def _run_stage2(run_id, client_id, business_name, region_id, module_list, 
 
         # Run sequentially — free-tier rate limits make parallel worthless;
         # each call waits its turn so a 429 doesn't cascade across all modules.
+        # Check for cancellation before every module so a stuck/long run stops
+        # promptly when the user hits Cancel.
         raw_outcomes = []
         for _job in jobs:
+            check_cancelled(run_id)
             raw_outcomes.append(await _call_with_retry(_job))
 
         # ── Phase C: restore + checkpoint (sequential) ────────────────────────
@@ -1191,14 +1245,18 @@ async def _run_stage2(run_id, client_id, business_name, region_id, module_list, 
                     run_state.modules_complete, client_key,
                 )
 
+    except (RunCancelled, asyncio.CancelledError):
+        log.info("Stage 2 cancelled by user — aborting", run_id=run_id)
+        raise
     except Exception as e:
-        log.error("Stage 2 failed", run_id=run_id, error=str(e))
+        log.error("Stage 2 crashed", run_id=run_id, error=str(e), exc_info=True)
         fail_run(run_id, f"Stage 2 error: {e}")
 
 
 async def _run_stage3(run_id, client_id, business_name, module_ids, client_key):
     """Stage 3: Generate report."""
     try:
+        check_cancelled(run_id)
         from reports.builder import build_report
         from reports.signer import ensure_signing_key
         from security.crypto import derive_master_key
@@ -1225,8 +1283,11 @@ async def _run_stage3(run_id, client_id, business_name, module_ids, client_key):
 
         log.info("Stage 3 complete", run_id=run_id, report=record.get("id"))
 
+    except (RunCancelled, asyncio.CancelledError):
+        log.info("Stage 3 cancelled by user — aborting", run_id=run_id)
+        raise
     except Exception as e:
-        log.error("Stage 3 failed", run_id=run_id, error=str(e))
+        log.error("Stage 3 crashed", run_id=run_id, error=str(e), exc_info=True)
         fail_run(run_id, f"Stage 3 error: {e}")
 
 
@@ -1500,7 +1561,7 @@ async def quick_financial_analysis(
             ).fetchone()
             if _co and _co["sector_name"]:
                 _ps = _db.execute(
-                    "SELECT symbol, company_name, pe_ratio FROM psx_companies "
+                    "SELECT symbol, company_name FROM psx_companies "
                     "WHERE sector_name=? AND symbol!=? AND is_debt=0 "
                     "ORDER BY company_name LIMIT 10",
                     (_co["sector_name"], ticker),
@@ -1508,8 +1569,7 @@ async def quick_financial_analysis(
                 if _ps:
                     _lines = [f"PSX SECTOR PEERS — {_co['sector_name']}\n"]
                     for p in _ps:
-                        _pe = f"  P/E {p['pe_ratio']:.1f}x" if p["pe_ratio"] else "  P/E N/A"
-                        _lines.append(f"  {p['symbol']:8} {p['company_name'][:35]}{_pe}")
+                        _lines.append(f"  {p['symbol']:8} {p['company_name'][:35]}")
                     peers = "\n".join(_lines)
         except Exception:
             pass

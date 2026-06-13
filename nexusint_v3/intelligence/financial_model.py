@@ -539,12 +539,30 @@ def _compute_dcf(revenue, ebitda, fcf, revenue_growth, total_debt, cash, region_
     # Simplified: WACC = Ke (assuming all-equity for private, adjust for listed)
     beta          = params["default_beta"]
     rfr           = params["risk_free_rate"]
+    rfr_source    = "regional default (10Y govt bond)"
+
+    # Prefer the live SBP policy rate (Pakistan monetary policy) as the risk-free
+    # rate so DCF valuations reflect actual conditions. Stored as percentage points
+    # (e.g. 22.0) → divide by 100 for a decimal fraction.
+    if region_id == "pakistan":
+        live_rate = None
+        try:
+            from database.macro_data import get_latest_macro
+            macro     = get_latest_macro()
+            live_rate = macro.get("sbp_policy_rate")
+            risk_free = (live_rate or 11.0) / 100
+        except Exception:
+            risk_free = 0.11
+        rfr        = risk_free
+        rfr_source = "SBP policy rate (live)" if live_rate else "default (11%)"
+
     erp           = params["equity_risk_premium"]
     ke            = rfr + beta * erp      # Cost of equity (CAPM)
     r.wacc        = round(ke, 4)          # Simplified — use ke as WACC for private companies
 
     r.wacc_components = {
         "risk_free_rate":     f"{rfr:.1%}",
+        "risk_free_source":   rfr_source,
         "equity_risk_premium": f"{erp:.1%}",
         "beta":               beta,
         "cost_of_equity":     f"{ke:.1%}",
@@ -561,7 +579,7 @@ def _compute_dcf(revenue, ebitda, fcf, revenue_growth, total_debt, cash, region_
         bear_growth = 0.02
         bull_growth = 0.18
 
-    terminal_growth = min(params["risk_free_rate"] * 0.5, 0.04)  # Conservative terminal growth
+    terminal_growth = min(rfr * 0.5, 0.04)  # Conservative terminal growth
     r.terminal_growth_rate    = terminal_growth
     r.revenue_growth_assumption = base_growth
 
@@ -641,7 +659,7 @@ def _compute_comparables(peer_tickers: list, target_revenue, target_ebitda) -> C
         return r
     try:
         from database.connection import get_db
-        db = next(get_db())
+        db = get_db()
         placeholders = ",".join("?" * len(peer_tickers[:8]))
         rows = db.execute(
             f"SELECT symbol, company_name, market_cap, sector_name "

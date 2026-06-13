@@ -195,10 +195,13 @@ def fetch_psx_sector_peers(industry: str) -> Optional[dict]:
     conditions = " OR ".join(f"LOWER(c.sector_name) LIKE ?" for _ in patterns)
     params     = [f"%{p}%" for p in patterns]
 
+    # psx_companies has no pe_ratio column. Derive P/E = price / EPS from the latest
+    # annual EPS in psx_financials where available.
     rows = db.execute(
         f"""
-        SELECT c.symbol, c.company_name, c.sector_name, c.pe_ratio, c.market_cap,
-               p.current AS price, p.change_pct
+        SELECT c.symbol, c.company_name, c.sector_name, c.market_cap,
+               p.current AS price, p.change_pct,
+               f.eps AS eps
         FROM psx_companies c
         LEFT JOIN (
             SELECT symbol, current, change_pct
@@ -207,6 +210,15 @@ def fetch_psx_sector_peers(industry: str) -> Optional[dict]:
                 SELECT symbol, MAX(trade_date) FROM psx_prices GROUP BY symbol
             )
         ) p ON c.symbol = p.symbol
+        LEFT JOIN (
+            SELECT symbol, eps
+            FROM psx_financials
+            WHERE period_type = 'annual' AND eps IS NOT NULL
+              AND (symbol, period) IN (
+                SELECT symbol, MAX(period) FROM psx_financials
+                WHERE period_type = 'annual' AND eps IS NOT NULL GROUP BY symbol
+              )
+        ) f ON c.symbol = f.symbol
         WHERE c.is_debt = 0 AND ({conditions})
         ORDER BY c.market_cap DESC
         LIMIT 20
@@ -220,7 +232,9 @@ def fetch_psx_sector_peers(industry: str) -> Optional[dict]:
     peers = []
     pes   = []
     for r in rows:
-        pe = r["pe_ratio"]
+        price = r["price"]
+        eps   = r["eps"]
+        pe    = (price / eps) if (price and eps and eps > 0) else None
         rec = {
             "ticker":    r["symbol"],
             "name":      r["company_name"],

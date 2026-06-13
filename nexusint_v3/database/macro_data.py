@@ -220,6 +220,35 @@ def get_global_peers(industry: str) -> List[dict]:
     return [dict(r) for r in rows]
 
 
+def get_latest_macro() -> dict:
+    """
+    Return the latest Pakistan macro indicators as a flat dict of percentage-point
+    numbers (e.g. sbp_policy_rate=22.0 means 22%). Keys are absent if no data exists.
+    Used by the financial model to drive a data-backed risk-free rate.
+    """
+    out: dict = {}
+
+    pr = get_sbp_indicator("policy_rate")
+    if pr and pr.get("value") is not None:
+        out["sbp_policy_rate"] = float(pr["value"])
+
+    cpi = get_sbp_indicator("cpi")
+    if cpi and cpi.get("value") is not None:
+        out["cpi"] = float(cpi["value"])
+
+    try:
+        db = get_db()
+        gdp = db.execute(
+            "SELECT value FROM pk_macro WHERE indicator='gdp_growth' ORDER BY period DESC LIMIT 1"
+        ).fetchone()
+        if gdp and gdp["value"] is not None:
+            out["gdp_growth"] = float(gdp["value"])
+    except Exception:
+        pass
+
+    return out
+
+
 # ── Prompt summary ────────────────────────────────────────────────────────────
 
 def get_macro_summary_text(industry: Optional[str] = None) -> str:

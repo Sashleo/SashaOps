@@ -18,12 +18,58 @@ import json
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from dataclasses import dataclass, field, asdict
 
 import structlog
 
 from database.connection import get_db
+
+if TYPE_CHECKING:
+    import asyncio
+
+
+# ── Cancellation infrastructure ───────────────────────────────────────────────
+# A run is cancelled in two ways simultaneously:
+#   1. A cooperative flag (_CANCELLED_RUNS) the background stage workers poll at
+#      checkpoints — guarantees the worker stops overwriting the FAILED state even
+#      if the asyncio task can't be force-cancelled (e.g. mid executor call).
+#   2. A registered asyncio.Task handle that cancel_run() force-cancels, so the
+#      worker is interrupted at its next await point without waiting for a poll.
+
+class RunCancelled(Exception):
+    """Raised inside a stage worker when the run has been cancelled by the user."""
+
+
+_CANCELLED_RUNS: set[str] = set()
+_RUNNING_TASKS: "dict[str, asyncio.Task]" = {}
+
+
+def request_cancellation(run_id: str) -> None:
+    _CANCELLED_RUNS.add(run_id)
+
+
+def is_cancelled(run_id: str) -> bool:
+    return run_id in _CANCELLED_RUNS
+
+
+def clear_cancellation(run_id: str) -> None:
+    _CANCELLED_RUNS.discard(run_id)
+
+
+def check_cancelled(run_id: str) -> None:
+    """Raise RunCancelled if a cancellation has been requested for this run."""
+    if run_id in _CANCELLED_RUNS:
+        raise RunCancelled(run_id)
+
+
+def register_task(run_id: str, task: "asyncio.Task") -> None:
+    """Register the asyncio task running a stage so cancel_run() can interrupt it."""
+    _RUNNING_TASKS[run_id] = task
+
+
+def unregister_task(run_id: str) -> None:
+    _RUNNING_TASKS.pop(run_id, None)
 
 log = structlog.get_logger()
 
@@ -215,7 +261,7 @@ class RunState:
     @property
     def elapsed_minutes(self) -> float:
         try:
-            start = datetime.fromisoformat(self.created_at)
+            start = datetime.fromisoformat(self.started_at)
             return (datetime.utcnow() - start).total_seconds() / 60
         except Exception:
             return 0.0
@@ -444,8 +490,26 @@ def fail_run(run_id: str, error: str) -> Optional[RunState]:
 
 
 def cancel_run(run_id: str) -> Optional[RunState]:
-    """Cancel a run — moves it to FAILED with a 'Cancelled by user' message."""
-    return fail_run(run_id, "Cancelled by user")
+    """
+    Cancel a run. Three things happen, in order:
+      1. Set the cooperative cancellation flag so the stage worker stops at its
+         next checkpoint and stops overwriting the FAILED state.
+      2. Force-cancel the registered asyncio task so it's interrupted at its next
+         await point immediately (rather than waiting for the next poll).
+      3. Mark the run FAILED in the DB so the UI reflects the cancellation now.
+    """
+    request_cancellation(run_id)
+
+    task = _RUNNING_TASKS.get(run_id)
+    if task is not None and not task.done():
+        try:
+            task.cancel()
+        except Exception as e:
+            log.warning("Could not force-cancel run task", run_id=run_id, error=str(e)[:80])
+
+    state = fail_run(run_id, "Cancelled by user")
+    log.info("Run cancellation requested", run_id=run_id)
+    return state
 
 
 def pause_run(run_id: str) -> Optional[RunState]:

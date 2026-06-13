@@ -66,3 +66,6 @@ torch
 transformers==4.44.2
 sentence-transformers==3.1.1
 statsmodels==0.14.4
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest==8.3.3
