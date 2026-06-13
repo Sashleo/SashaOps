@@ -144,20 +144,26 @@ def _extract_tables_from_pdf(pdf_bytes: bytes) -> dict:
     out: dict = {}
     try:
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-            for page in pdf.pages[:80]:
+            n_pages = len(pdf.pages)
+            log.info("PDF opened for table extraction", pages=n_pages)
+            for i, page in enumerate(pdf.pages[:80]):
                 try:
                     tables = page.extract_tables() or []
                     for table in tables:
                         rows = [r for r in table if r] if table else []
                         partial = _parse_table_rows(rows)
+                        if partial:
+                            log.info("Table rows matched", page=i + 1, new_keys=list(partial.keys()))
                         for k, v in partial.items():
                             if k not in out:
                                 out[k] = v
-                except Exception:
+                except Exception as page_err:
+                    log.info("Page table extraction error", page=i + 1, error=str(page_err)[:80])
                     continue
     except Exception as e:
         log.info("PDF table extraction failed", error=str(e)[:100])
 
+    log.info("PDF table extraction complete", fields_found=len(out), keys=list(out.keys()))
     return out
 
 
@@ -229,27 +235,35 @@ def extract_financials_from_text(
     """
     out: dict = {}
 
+    log.info("Document financial extraction start", doc_type=doc_type,
+             has_bytes=doc_bytes is not None, text_len=len(text or ""))
+
     # Stage 1: PDF table extraction (best for financial statements)
     if doc_bytes and doc_type == "pdf":
         out = _extract_tables_from_pdf(doc_bytes)
-        log.info("PDF table extraction", fields_found=len(out))
+        log.info("Stage 1 (PDF tables) done", fields_found=len(out), keys=list(out.keys()))
 
     # Stage 2: Text regex (fallback or supplement)
     if len(out) < 3 and text:
+        log.info("Stage 2 (text regex) — Stage 1 found too few fields", stage1_count=len(out))
         text_out = _extract_from_text(text)
+        log.info("Stage 2 (text regex) done", new_fields=len(text_out), keys=list(text_out.keys()))
         for k, v in text_out.items():
             if k not in out:
                 out[k] = v
-        log.info("Text regex extraction", fields_found=len(out))
+    elif len(out) >= 3:
+        log.info("Stage 2 skipped — Stage 1 sufficient", fields=len(out))
 
     # Stage 3: Spreadsheet (for XLSX/CSV uploads)
     if len(out) < 3 and doc_bytes and doc_type in ("xlsx", "csv"):
+        log.info("Stage 3 (spreadsheet) — previous stages found too few fields", count=len(out))
         sheet_out = _extract_from_spreadsheet(doc_bytes, doc_type)
+        log.info("Stage 3 (spreadsheet) done", new_fields=len(sheet_out), keys=list(sheet_out.keys()))
         for k, v in sheet_out.items():
             if k not in out:
                 out[k] = v
-        log.info("Spreadsheet extraction", fields_found=len(out))
 
+    log.info("Document financial extraction complete", total_fields=len(out), keys=list(out.keys()))
     return out
 
 

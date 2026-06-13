@@ -46,8 +46,9 @@ def init_database() -> None:
     # Set the encryption key (SQLCipher-specific pragma)
     # This must be the first operation on a new or existing encrypted database
     try:
+        _password = settings.DB_MASTER_PASSWORD.replace("'", "''")
         _connection.execute(
-            f"PRAGMA key = '{settings.DB_MASTER_PASSWORD}'"
+            f"PRAGMA key = '{_password}'"
         )
         # Verify the key is correct by running a test query
         _connection.execute("SELECT count(*) FROM sqlite_master")

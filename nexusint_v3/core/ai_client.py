@@ -328,8 +328,9 @@ def extract_memory_insights(analysis_text: str, module_id: str, business: str) -
     These are stored in the memory system for future analyses.
     Returns list of insight strings.
     """
+    # Never send business name to Gemini — use {{COMPANY}} token (Class S)
     prompt = f"""
-You just completed a {module_id} analysis for {business}.
+You just completed a {module_id} analysis for {{{{COMPANY}}}}.
 
 Analysis excerpt (first 800 chars):
 {analysis_text[:800]}
@@ -352,61 +353,6 @@ Return ONLY the insights, one per line, no numbering or bullets.
         if line.strip() and len(line.strip()) > 20
     ][:3]
 
-
-def analyse_document(
-    document_text: str,
-    doc_type: str,
-    client_name: str,
-    question: Optional[str] = None,
-) -> str:
-    """
-    Analyse an uploaded document.
-    The document text is passed in memory — never stored unencrypted.
-
-    Args:
-        document_text: Extracted text content of the document
-        doc_type: Type of document (financial, contract, strategy, etc)
-        client_name: For the privacy wrapper
-        question: Optional specific question about the document
-
-    Returns:
-        Analysis text
-    """
-    if question:
-        task = f"Answer this specific question about the document: {question}"
-    else:
-        task = (
-            f"Auto-analyse this {doc_type} document. Deliver: "
-            f"(1) Document type and purpose, "
-            f"(2) Key findings and figures, "
-            f"(3) Anomalies or red flags, "
-            f"(4) Questions you would ask the client about this document."
-        )
-
-    prompt = f"""
-CONFIDENTIAL DOCUMENT ANALYSIS
-Client: {client_name}
-Document type: {doc_type}
-
-CRITICAL PRIVACY RULES:
-- Do not store, repeat, or reference specific financial figures in general memory
-- Do not include personal names in any memory or pattern entries
-- Treat all information as strictly confidential to this client
-
-Document content:
-{document_text[:4000]}
-
-Task: {task}
-"""
-
-    try:
-        model = get_analysis_model()
-        # No search grounding for document analysis — work from the document only
-        response = model.generate_content(prompt)
-        return response.text if hasattr(response, "text") else ""
-    except Exception as e:
-        log.error("Document analysis failed", error=str(e))
-        return f"Document analysis failed: {_friendly_error(e)}"
 
 
 def _friendly_error(e: Exception) -> str:

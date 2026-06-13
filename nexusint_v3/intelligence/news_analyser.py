@@ -32,6 +32,7 @@ class NewsIntelligenceBrief:
     analyst_note: str = ""
     source_count: int = 0
     headline_count: int = 0
+    raw_headlines: list = field(default_factory=list)  # fallback: top N raw feed titles
 
 
 def _parse_json_response(text: str) -> dict:
@@ -71,11 +72,17 @@ def analyse_news_for_business(
     This identifies which headlines are actually relevant to the business
     and synthesises them into an actionable intelligence brief.
     """
+    raw_headlines = [
+        item.title for item in (feed_result.items or [])
+        if getattr(item, "title", "")
+    ][:15]
+
     brief = NewsIntelligenceBrief(
         business_name=business_name,
         region_id=region_id,
         source_count=len(feed_result.sources_fetched),
         headline_count=feed_result.total_headlines,
+        raw_headlines=raw_headlines,
     )
 
     if not feed_result.items:
@@ -165,6 +172,10 @@ def format_brief_for_prompt(brief: NewsIntelligenceBrief) -> str:
         lines.append("\nCritical Developments:")
         for dev in brief.critical_developments[:5]:
             lines.append(f"  • {dev}")
+    elif brief.raw_headlines:
+        lines.append("\nRecent Headlines:")
+        for h in brief.raw_headlines[:10]:
+            lines.append(f"  • {h}")
 
     if brief.top_threats:
         lines.append("\nTop Threats:")

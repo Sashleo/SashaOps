@@ -24,7 +24,7 @@ from core.run_manager import (
     approve_stage1, approve_stage2,
     advance_to_stage1, complete_stage1, complete_stage2,
     mark_module_running, mark_module_complete, mark_module_failed,
-    fail_run,
+    fail_run, cancel_run,
     RunMode, RunStage, DataCollectionSummary, AnalysisSummary,
 )
 from core.ai_client import call_gemini_raw
@@ -214,6 +214,18 @@ async def run_status(request: Request, run_id: str):
         "client_documents": _client_documents(sidebar),
         **sidebar,
     })
+
+
+@router.post("/run/{run_id}/cancel", response_class=HTMLResponse)
+async def cancel_run_endpoint(request: Request, run_id: str):
+    """Cancel a running or stuck analysis — marks it FAILED immediately."""
+    require_session(request)
+    cancel_run(run_id)
+    return HTMLResponse(
+        "<div class='alert alert-warning' hx-get='' hx-trigger='load delay:1s' hx-target='body'>"
+        "Run cancelled. <a href='/intelligence' class='font-bold underline'>Start new analysis</a>."
+        "</div>"
+    )
 
 
 @router.post("/gate/{run_id}/approve", response_class=HTMLResponse)
@@ -740,14 +752,6 @@ async def _run_stage2(run_id, client_id, business_name, region_id, module_list, 
                 extra_context += f"\n\n{data_summary.search_snippets}"
             if data_summary.website_snippet:
                 extra_context += f"\n\nCOMPANY WEBSITE CONTENT:\n{data_summary.website_snippet[:2500]}"
-            if getattr(data_summary, "document_text", ""):
-                names = ", ".join(getattr(data_summary, "document_names", []))
-                extra_context += (
-                    f"\n\nUPLOADED CLIENT DOCUMENTS ({names}) — use as qualitative context;\n"
-                    f"quantitative financial data has been separately extracted and "
-                    f"pre-computed above:\n"
-                    f"{data_summary.document_text[:30000]}"
-                )
             if data_summary.forex_text:
                 extra_context += f"\n\n{data_summary.forex_text}"
             if data_summary.index_text:

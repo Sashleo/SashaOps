@@ -10,3 +10,6 @@ data/documents/
 *.db-shm
 reports/generated/
 static/js/htmx.min.js
+.tmp/
+credentials.json
+token.json

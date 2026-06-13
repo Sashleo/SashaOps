@@ -212,6 +212,14 @@ class RunState:
         }
         return stage_nums.get(self.stage, "")
 
+    @property
+    def elapsed_minutes(self) -> float:
+        try:
+            start = datetime.fromisoformat(self.created_at)
+            return (datetime.utcnow() - start).total_seconds() / 60
+        except Exception:
+            return 0.0
+
 
 # ── Run creation ──────────────────────────────────────────────────────────────
 
@@ -433,6 +441,11 @@ def fail_run(run_id: str, error: str) -> Optional[RunState]:
     _save_run(state)
     log.error("Run failed", run_id=run_id, error=error[:200])
     return state
+
+
+def cancel_run(run_id: str) -> Optional[RunState]:
+    """Cancel a run — moves it to FAILED with a 'Cancelled by user' message."""
+    return fail_run(run_id, "Cancelled by user")
 
 
 def pause_run(run_id: str) -> Optional[RunState]:

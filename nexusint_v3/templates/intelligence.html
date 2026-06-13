@@ -227,6 +227,26 @@
     · {{ run_state.modules_failed|length }} failed
     {% endif %}
   </div>
+
+  <!-- Stuck-run warning (>60 min in non-terminal state) -->
+  {% if run_state.elapsed_minutes is defined and run_state.elapsed_minutes > 60 %}
+  <div style="margin-top:12px; padding:8px 12px; background:var(--bg-3); border-radius:6px; border-left:3px solid var(--danger); font-size:0.82em; color:var(--danger)">
+    ⚠️ This run has been active for {{ run_state.elapsed_minutes|int }} minutes and may be stuck.
+    Cancel it and start a new analysis.
+  </div>
+  {% endif %}
+
+  <div style="margin-top:14px; display:flex; gap:10px; align-items:center">
+    <button class="btn btn-danger btn-sm"
+            hx-post="/intelligence/run/{{ run_state.run_id }}/cancel"
+            hx-confirm="Cancel this analysis run?"
+            hx-target="#page-content"
+            hx-swap="innerHTML">
+      ✕ Cancel Run
+    </button>
+    <a href="/intelligence" class="btn btn-secondary btn-sm">↩ New Analysis</a>
+  </div>
+
   <!-- Auto-poll: swaps the entire #page-content so the progress banner AND the
        stage-gate banner (both rendered outside #main-panel) update live. Swapping
        only #main-panel left the banners stale until a manual refresh. -->

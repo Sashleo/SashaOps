@@ -13,7 +13,7 @@ This module performs the work a trained financial analyst does:
 - Sensitivity analysis on key assumptions
 
 Data sources:
-- Listed companies: yfinance (real filings from exchanges)
+- Listed companies: PSX scrapers (psx_companies, psx_prices, psx_financials DB tables)
 - Private companies: structured data extracted from uploaded documents
 
 Output: A structured FinancialAnalysis object that feeds directly
@@ -26,16 +26,6 @@ from typing import Optional
 import structlog
 
 log = structlog.get_logger()
-
-# ── Try importing financial libraries ─────────────────────────────────────────
-try:
-    import yfinance as yf
-    import pandas as pd
-    import numpy as np
-    YFINANCE_AVAILABLE = True
-except ImportError:
-    YFINANCE_AVAILABLE = False
-    log.warning("yfinance/pandas not available — install for live financial data")
 
 
 # ── Data structures ───────────────────────────────────────────────────────────
@@ -241,151 +231,6 @@ REGIONAL_WACC_PARAMS = {
 
 # ── Main entry points ─────────────────────────────────────────────────────────
 
-def analyse_listed_company(
-    ticker: str,
-    region_id: str = "pakistan",
-    peer_tickers: Optional[list] = None,
-) -> FinancialAnalysis:
-    """
-    Full financial analysis of a publicly listed company using yfinance.
-
-    Args:
-        ticker: Stock ticker symbol (e.g. ENGRO, LUCK, HBL — PSX symbols)
-        region_id: Region for WACC parameters and currency context
-        peer_tickers: Optional list of peer tickers for comparable analysis
-
-    Returns:
-        Complete FinancialAnalysis object
-    """
-    result = FinancialAnalysis(ticker=ticker, data_source="yfinance")
-
-    if not YFINANCE_AVAILABLE:
-        result.errors.append("yfinance not installed. Run: pip install yfinance pandas numpy")
-        return result
-
-    try:
-        stock = yf.Ticker(ticker)
-        info  = stock.info or {}
-
-        result.company_name = info.get("longName", ticker)
-        result.currency     = info.get("financialCurrency", "USD")
-
-        # ── Pull financial statements ─────────────────────────────────────────
-        income_stmt   = stock.income_stmt
-        balance_sheet = stock.balance_sheet
-        cash_flow     = stock.cashflow
-
-        if income_stmt is None or income_stmt.empty:
-            result.errors.append(f"No financial data available for {ticker} on yfinance")
-            return result
-
-        # Extract latest year figures (first column)
-        def _get(df, *keys):
-            """Try multiple key names — yfinance uses different names across regions."""
-            if df is None or df.empty:
-                return None
-            for key in keys:
-                if key in df.index:
-                    val = df[df.columns[0]].get(key)
-                    if val is not None and not (isinstance(val, float) and pd.isna(val)):
-                        return float(val)
-            return None
-
-        # ── Income statement ──────────────────────────────────────────────────
-        result.revenue      = _get(income_stmt, "Total Revenue", "Revenue")
-        result.gross_profit = _get(income_stmt, "Gross Profit")
-        result.ebit         = _get(income_stmt, "EBIT", "Operating Income")
-        result.net_income   = _get(income_stmt, "Net Income", "Net Income Common Stockholders")
-
-        # EBITDA = EBIT + D&A
-        da = _get(cash_flow, "Depreciation And Amortization", "Depreciation & Amortization")
-        if result.ebit is not None and da is not None:
-            result.ebitda = result.ebit + da
-        else:
-            result.ebitda = _get(income_stmt, "EBITDA", "Normalized EBITDA")
-
-        # ── Balance sheet ─────────────────────────────────────────────────────
-        result.total_assets        = _get(balance_sheet, "Total Assets")
-        result.total_debt          = _get(balance_sheet, "Total Debt", "Long Term Debt")
-        result.cash                = _get(balance_sheet, "Cash And Cash Equivalents", "Cash")
-        result.shareholders_equity = _get(balance_sheet, "Stockholders Equity", "Common Stock Equity")
-
-        current_assets      = _get(balance_sheet, "Current Assets")
-        current_liabilities = _get(balance_sheet, "Current Liabilities")
-        inventory           = _get(balance_sheet, "Inventory")
-        receivables         = _get(balance_sheet, "Accounts Receivable", "Net Receivables")
-        payables            = _get(balance_sheet, "Accounts Payable")
-
-        # ── Cash flow ─────────────────────────────────────────────────────────
-        ocf         = _get(cash_flow, "Operating Cash Flow", "Cash From Operating Activities")
-        capex       = _get(cash_flow, "Capital Expenditure", "Purchases Of Property Plant And Equipment")
-        fcf_actual  = _get(cash_flow, "Free Cash Flow")
-        if fcf_actual is None and ocf is not None and capex is not None:
-            fcf_actual = ocf + capex  # capex is typically negative in yfinance
-
-        result.fiscal_year = str(income_stmt.columns[0].year) if hasattr(income_stmt.columns[0], 'year') else "Latest"
-
-        # ── Historical data for growth ────────────────────────────────────────
-        revenue_history = []
-        if len(income_stmt.columns) >= 2:
-            for col in income_stmt.columns[:4]:
-                rev = income_stmt[col].get("Total Revenue") or income_stmt[col].get("Revenue")
-                if rev is not None and not pd.isna(rev):
-                    revenue_history.append(float(rev))
-
-        # ── Compute all ratios ────────────────────────────────────────────────
-        result.liquidity    = _compute_liquidity(current_assets, current_liabilities, inventory, ocf, result.cash)
-        result.profitability = _compute_profitability(result.revenue, result.gross_profit, result.ebitda, result.ebit, result.net_income, result.total_assets, result.shareholders_equity)
-        result.leverage     = _compute_leverage(result.total_debt, result.shareholders_equity, result.ebitda, result.ebit, result.cash, income_stmt)
-        result.efficiency   = _compute_efficiency(result.revenue, result.total_assets, receivables, payables, inventory, result.gross_profit)
-        result.growth       = _compute_growth(revenue_history, result.gross_profit, result.ebitda, income_stmt)
-        result.altman_z     = _compute_altman_z(current_assets, current_liabilities, result.total_assets, result.total_debt, result.shareholders_equity, result.revenue, result.ebit, result.cash)
-        result.dupont       = _compute_dupont(result.net_income, result.revenue, result.total_assets, result.shareholders_equity)
-        result.working_capital = _compute_working_capital(current_assets, current_liabilities, result.revenue, revenue_history)
-
-        # ── Comparable analysis ───────────────────────────────────────────────
-        if peer_tickers:
-            result.comps = _compute_comparables(peer_tickers, result.revenue, result.ebitda)
-        else:
-            # Use yfinance's built-in peer data if available
-            auto_peers = _find_peers_from_info(info, ticker)
-            if auto_peers:
-                result.comps = _compute_comparables(auto_peers, result.revenue, result.ebitda)
-
-        # ── DCF Valuation ─────────────────────────────────────────────────────
-        result.dcf = _compute_dcf(
-            revenue=result.revenue,
-            ebitda=result.ebitda,
-            fcf=fcf_actual,
-            revenue_growth=result.growth.revenue_growth_yoy,
-            total_debt=result.total_debt,
-            cash=result.cash,
-            region_id=region_id,
-        )
-
-        # ── Three-statement projection ────────────────────────────────────────
-        result.three_statement = _build_three_statement_model(
-            revenue=result.revenue,
-            gross_margin=result.profitability.gross_margin,
-            ebitda_margin=result.profitability.ebitda_margin,
-            net_margin=result.profitability.net_margin,
-            growth_rate=result.growth.revenue_growth_yoy,
-            capex=capex,
-        )
-
-        # ── Overall health score ──────────────────────────────────────────────
-        result.financial_health_score = _compute_health_score(result)
-        result.key_risks, result.key_strengths = _identify_risks_strengths(result)
-
-        log.info("Financial analysis complete", ticker=ticker, health_score=result.financial_health_score)
-
-    except Exception as e:
-        result.errors.append(f"Analysis error: {str(e)}")
-        log.error("Financial analysis failed", ticker=ticker, error=str(e))
-
-    return result
-
-
 def analyse_from_document(
     financials: dict,
     company_name: str,
@@ -452,7 +297,7 @@ def analyse_from_document(
         result.dcf           = _compute_dcf(result.revenue, result.ebitda, None, result.growth.revenue_growth_yoy, result.total_debt, result.cash, region_id)
         result.three_statement = _build_three_statement_model(result.revenue, result.profitability.gross_margin, result.profitability.ebitda_margin, result.profitability.net_margin, result.growth.revenue_growth_yoy, capex)
 
-        if peer_tickers and YFINANCE_AVAILABLE:
+        if peer_tickers:
             result.comps = _compute_comparables(peer_tickers, result.revenue, result.ebitda)
 
         result.financial_health_score = _compute_health_score(result)
@@ -790,63 +635,31 @@ def _compute_dcf(revenue, ebitda, fcf, revenue_growth, total_debt, cash, region_
 
 
 def _compute_comparables(peer_tickers: list, target_revenue, target_ebitda) -> ComparableAnalysis:
+    """PSX peer comparables — populated from psx_companies DB, not yfinance."""
     r = ComparableAnalysis()
-
-    if not YFINANCE_AVAILABLE or not peer_tickers:
+    if not peer_tickers:
         return r
-
-    companies = []
-    for ticker in peer_tickers[:8]:   # Cap at 8 peers
-        try:
-            stock = yf.Ticker(ticker)
-            info  = stock.info or {}
-
-            market_cap = info.get("marketCap")
-            total_debt = info.get("totalDebt", 0) or 0
-            cash       = info.get("totalCash", 0) or 0
-            revenue    = info.get("totalRevenue")
-            ebitda     = info.get("ebitda")
-            ev         = (market_cap + total_debt - cash) if market_cap else None
-
-            comp = ComparableCompany(
-                name       = info.get("longName", ticker),
-                ticker     = ticker,
-                market_cap = market_cap,
-                ev         = ev,
-                revenue    = revenue,
-                ebitda     = ebitda,
-                ev_revenue = _safe_div(ev, revenue),
-                ev_ebitda  = _safe_div(ev, ebitda),
-                pe_ratio   = info.get("trailingPE"),
-                gross_margin = info.get("grossMargins"),
-            )
-            companies.append(comp)
-        except Exception:
-            continue
-
-    r.companies = companies
-
-    if companies:
-        ev_revs   = [c.ev_revenue for c in companies if c.ev_revenue and c.ev_revenue > 0]
-        ev_ebs    = [c.ev_ebitda  for c in companies if c.ev_ebitda  and c.ev_ebitda  > 0 and c.ev_ebitda < 100]
-        pes       = [c.pe_ratio   for c in companies if c.pe_ratio   and c.pe_ratio   > 0 and c.pe_ratio  < 100]
-
-        if YFINANCE_AVAILABLE:
-            import numpy as np
-            r.median_ev_revenue = round(float(np.median(ev_revs)), 2) if ev_revs else None
-            r.median_ev_ebitda  = round(float(np.median(ev_ebs)), 2)  if ev_ebs  else None
-            r.median_pe         = round(float(np.median(pes)), 2)     if pes     else None
-
-        r.implied_value_ev_revenue = round(r.median_ev_revenue * target_revenue, 0) if (r.median_ev_revenue and target_revenue) else None
-        r.implied_value_ev_ebitda  = round(r.median_ev_ebitda  * target_ebitda,  0) if (r.median_ev_ebitda  and target_ebitda)  else None
-
-        r.interpretation = (
-            f"Peer group of {len(companies)} companies | "
-            f"Median EV/Revenue: {r.median_ev_revenue}x | "
-            f"Median EV/EBITDA: {r.median_ev_ebitda}x | "
-            f"Implied equity value range: {_fmt(r.implied_value_ev_revenue)} — {_fmt(r.implied_value_ev_ebitda)}"
-        )
-
+    try:
+        from database.connection import get_db
+        db = next(get_db())
+        placeholders = ",".join("?" * len(peer_tickers[:8]))
+        rows = db.execute(
+            f"SELECT symbol, company_name, market_cap, sector_name "
+            f"FROM psx_companies WHERE symbol IN ({placeholders})",
+            peer_tickers[:8],
+        ).fetchall()
+        companies = []
+        for row in rows:
+            companies.append(ComparableCompany(
+                name=row["company_name"] or row["symbol"],
+                ticker=row["symbol"],
+                market_cap=row["market_cap"],
+            ))
+        r.companies = companies
+        if companies:
+            r.interpretation = f"PSX peer group: {len(companies)} listed companies in same sector"
+    except Exception as e:
+        log.warning("PSX comparables lookup failed", error=str(e)[:80])
     return r
 
 
@@ -992,13 +805,6 @@ def _identify_risks_strengths(analysis: FinancialAnalysis) -> tuple[list, list]:
     return risks[:5], strengths[:5]
 
 
-def _find_peers_from_info(info: dict, ticker: str) -> list:
-    """Extract peer tickers from yfinance company info where available."""
-    # yfinance does not reliably provide peer lists — return empty
-    # In production, integrate with a financial data API for proper peer sets
-    return []
-
-
 def _fmt(value) -> str:
     """Format a large number to human-readable form."""
     if value is None:
@@ -1075,22 +881,6 @@ def to_report_dict(analysis: FinancialAnalysis) -> dict:
 
 # ── Local-first entry points (no AI call) ────────────────────────────────────
 
-def run_local_analysis(ticker: str, region_id: str = "pakistan") -> dict:
-    """
-    Fetch yfinance data and run the full FinancialAnalyzer locally.
-    Returns a flat dict safe for JSON serialisation and HTML rendering.
-    No AI call — pure math.
-
-    Raises ValueError if ticker not found or has no financial data.
-    """
-    analysis = analyse_listed_company(ticker, region_id=region_id)
-
-    if analysis.errors and not analysis.revenue:
-        raise ValueError(analysis.errors[0] if analysis.errors else f"No data for {ticker}")
-
-    return _assemble_report_dict(analysis, region_id)
-
-
 def run_local_analysis_psx(ticker: str) -> dict:
     """
     Run the FULL local financial analysis on PSX-sourced statements (not yfinance).
@@ -1126,8 +916,7 @@ def run_local_analysis_psx(ticker: str) -> dict:
 
 
 def _assemble_report_dict(analysis: "FinancialAnalysis", region_id: str) -> dict:
-    """Build the flat, template-/JSON-friendly dict from a FinancialAnalysis.
-    Shared by both the yfinance and PSX analysis entry points."""
+    """Build the flat, template-/JSON-friendly dict from a FinancialAnalysis."""
     result = to_report_dict(analysis)
 
     # Add raw float versions for colour-coding in templates
