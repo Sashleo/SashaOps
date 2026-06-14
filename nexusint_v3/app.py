@@ -110,16 +110,16 @@ def create_app() -> FastAPI:
     # ── Global error handler ──────────────────────────────────────────────────
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
-        import traceback
+        import traceback as _tb
         log.error(
             "Unhandled exception",
-            path=request.url.path,
+            path=str(request.url.path),
             error=str(exc),
-            traceback=traceback.format_exc(),
+            traceback=_tb.format_exc(),
         )
         return JSONResponse(
             status_code=500,
-            content={"detail": "An internal error occurred. Please try again."},
+            content={"detail": "An internal error occurred. Check server logs."},
         )
 
     return app
