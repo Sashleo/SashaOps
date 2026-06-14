@@ -305,20 +305,23 @@ def run_analysis(
         raise
 
 
-def run_fast(prompt: str) -> str:
+def run_fast(prompt: str, sanitiser=None) -> str:
     """
-    Lightweight Gemini call for quick tasks:
-    - News headline classification
-    - Brief summarisation
-    - Formatting tasks
-    No search grounding (faster, cheaper).
+    Fire a Gemini call with minimal overhead.
+    Pass sanitiser whenever the prompt may contain Class S data (company
+    names, financial figures, client identifiers).
     """
+    if sanitiser is not None:
+        prompt = sanitiser.sanitise(prompt)
     try:
-        model = get_fast_model()
+        model = _get_model(temperature=0.3)
         response = model.generate_content(prompt)
-        return response.text if hasattr(response, "text") else ""
+        text = response.text or ""
+        if sanitiser is not None:
+            text = sanitiser.restore(text)
+        return text
     except Exception as e:
-        log.error("Gemini fast call failed", error=str(e))
+        log.warning("run_fast failed", error=str(e))
         return ""
 
 
