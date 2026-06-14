@@ -353,3 +353,36 @@ async def tokensheet_inspector(request: Request, run_id: str, module: str = ""):
 </div>
 </body>
 </html>""")
+
+
+@router.get("/debug/run-tests", response_class=HTMLResponse)
+async def run_tests(request: Request):
+    """Run the test suite and return results as HTML. DEBUG only."""
+    import subprocess
+    import os
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    result = subprocess.run(
+        ["python", "-m", "pytest", "tests/", "-v", "--tb=short"],
+        capture_output=True,
+        text=True,
+        cwd=project_root,
+        timeout=60,
+    )
+    output = result.stdout + result.stderr
+    passed = "passed" in output
+    color = "#00ff88" if passed else "#ff4444"
+    html = f"""
+    <html>
+    <head><style>
+        body {{ background: #0a0a0a; color: #ccc; font-family: monospace; padding: 2rem; }}
+        pre {{ background: #111; padding: 1rem; border-radius: 6px; 
+               border-left: 4px solid {color}; white-space: pre-wrap; }}
+        h2 {{ color: {color}; }}
+    </style></head>
+    <body>
+        <h2>{" Tests Passed" if passed else " Tests Failed"}</h2>
+        <pre>{output}</pre>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html)
