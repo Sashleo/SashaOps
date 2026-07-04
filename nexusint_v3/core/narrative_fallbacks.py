@@ -24,7 +24,9 @@ from core.sanitiser import TokenSheet
 
 _env = Environment(autoescape=False)
 
-_BANNER_LOCAL = "_⚙️ Computed locally — data-driven, zero API calls_"
+# Per-module banner intentionally blank — the "computed locally" note is stated once
+# in the report footer/methodology instead of repeated on every section.
+_BANNER_LOCAL = ""
 _BANNER_AI    = "_✨ AI-enhanced_"
 
 
@@ -142,6 +144,36 @@ def _lines_from_text(text: str, max_lines: int = 6) -> list[str]:
     """Extract up to max_lines non-empty lines from a text block."""
     lines = [l.strip() for l in (text or "").split("\n") if l.strip()]
     return lines[:max_lines]
+
+
+def _news_bullets(data_summary: Any, max_lines: int = 8) -> list[str]:
+    """
+    Extract only the *headline* bullets from the (relevance-filtered) news brief,
+    skipping the meta/header lines. The brief is built by
+    intelligence.news_analyser.build_local_brief, so its bullets are already
+    filtered to company/sector-relevant items. Returns [] when there are none.
+    """
+    brief = getattr(data_summary, "news_brief", "") or ""
+    if not brief:
+        return []
+    out: list[str] = []
+    for raw in brief.split("\n"):
+        s = raw.strip()
+        if s.startswith("•") or s.startswith("- ") or s.startswith("🔴") or s.startswith("🟢"):
+            cleaned = s.lstrip("•-🔴🟢 ").strip()
+            if cleaned:
+                out.append(cleaned)
+        if len(out) >= max_lines:
+            break
+    return out
+
+
+def _no_relevant_news_line(data_summary: Any) -> str:
+    """A single honest 'no relevant news' statement, reused across modules."""
+    note = getattr(data_summary, "analyst_note", "") or ""
+    if "No company- or sector-specific news" in note:
+        return "_No company- or sector-specific news in this window._"
+    return "_No relevant news collected for this module in this window._"
 
 
 # ── financial ────────────────────────────────────────────────────────────────
@@ -318,15 +350,13 @@ def _render_sentiment(
                 lines.append(f"- {h}")
             lines.append("")
 
-    # Feed-based sentiment snippets
+    # Feed-based sentiment — relevance-filtered headlines with tailwind/headwind tags.
+    sent_bullets = _news_bullets(data_summary, 6)
     news_brief = getattr(data_summary, "news_brief", "") or ""
-    if news_brief:
-        lines += [
-            "### News Feed Sentiment (Stage 1 Scan)",
-            "",
-        ]
-        for ln in _lines_from_text(news_brief, 8):
-            lines.append(ln)
+    if sent_bullets:
+        lines += ["### Relevant News Signals (tailwind ＋ / headwind －)", ""]
+        for ln in sent_bullets:
+            lines.append(f"- {ln}")
         lines.append("")
 
     search_snippets = getattr(data_summary, "search_snippets", "") or ""
@@ -391,12 +421,12 @@ def _render_economy(
     except Exception:
         pass
 
-    # Feed headlines (economic)
-    news_brief = getattr(data_summary, "news_brief", "") or ""
-    if news_brief:
-        lines += ["### Recent Economic Headlines", ""]
-        for ln in _lines_from_text(news_brief, 8):
-            lines.append(f"- {ln}" if not ln.startswith("-") else ln)
+    # Macro/economic headlines — relevance-filtered (economy is a valid news lens).
+    econ_bullets = _news_bullets(data_summary, 6)
+    if econ_bullets:
+        lines += ["### Macro-Relevant Headlines", ""]
+        for ln in econ_bullets:
+            lines.append(f"- {ln}")
         lines.append("")
 
     # Impact on subject company if financial data available
@@ -445,63 +475,58 @@ def _render_competitors(
         "",
     ]
 
-    if peers_text:
-        lines += [
-            "### PSX Sector Peers",
-            "_Listed companies in the same sector — sourced from PSX market data_",
-            "",
-            "```",
-            peers_text,
-            "```",
-            "",
-        ]
-    else:
-        # Try to fetch peers directly
-        try:
-            from database.exchange_data import get_psx_sector_peers_text
-            fetched = get_psx_sector_peers_text(industry_tag or sector or "general")
-            if fetched:
-                lines += [
-                    "### PSX Sector Peers",
-                    "",
-                    "```",
-                    fetched,
-                    "```",
-                    "",
-                ]
-        except Exception:
-            pass
+    # Resolve the subject's ticker + PSX sector, then build a REAL side-by-side
+    # comparison: default peers = top-5 by market share in the sector, each peer's
+    # ratios computed and benchmarked against the subject.
+    ticker      = (local_result or {}).get("ticker") or ""
+    psx_sector  = getattr(data_summary, "psx_profile", {}) if data_summary else {}
+    psx_sector  = (psx_sector.get("sector") if isinstance(psx_sector, dict) else "") or sector
 
-    # Relative positioning vs subject company
+    comparison = ""
+    try:
+        from intelligence.competitors import build_competitor_comparison
+        # subject raw ratios (for the unlisted case where there's no ticker)
+        raw = (local_result or {}).get("_raw", {}) if local_result else {}
+        target_metrics = {
+            "net_margin":   raw.get("net_margin"),
+            "gross_margin": raw.get("gross_margin"),
+            "roe":          raw.get("roe"),
+            "de":           raw.get("debt_to_equity"),
+            "current_ratio": raw.get("current_ratio"),
+        }
+        comparison = build_competitor_comparison(
+            ticker, psx_sector, target_name=business_name, target_metrics=target_metrics,
+        )
+    except Exception as _e:
+        comparison = ""
+
+    if comparison:
+        lines += [comparison, ""]
+    elif not psx_sector:
+        lines.append(
+            "No sector peer comparison available: this company is not PSX-listed and no "
+            "sector could be inferred. Provide a PSX ticker or industry to benchmark peers."
+        )
+    else:
+        lines.append(
+            f"No PSX peers with usable financials were found in the {psx_sector} sector "
+            "to build a comparison."
+        )
+
+    # Subject's own position summary (health + Altman) as a quick read
     if local_result:
         health = local_result.get("health_score")
         z      = local_result.get("altman_z")
-        gm     = local_result.get("gross_margin")
-        roe    = local_result.get("roe")
         lines += [
-            f"### {business_name} — Market Position",
+            "",
+            f"### {business_name} — Position Snapshot",
             "",
             f"| Metric | Value | Signal |",
             f"|--------|-------|--------|",
             f"| Health Score | {_num(health, 1)}/10 | {_signal(health, 7.0, 5.0)} |",
-            f"| Gross Margin | {_pct(gm)} | {_signal(gm, 0.30, 0.12)} |",
-            f"| ROE | {_pct(roe)} | {_signal(roe, 0.15, 0.08)} |",
             f"| Altman Z-Score | {_num(z, 2) if z else 'N/A'} | {'✅' if z and z >= 2.99 else '⚠️' if z and z >= 1.81 else '—'} |",
             "",
         ]
-
-    search_snippets = getattr(data_summary, "search_snippets", "") or ""
-    if search_snippets:
-        lines += ["### Competitor Intelligence (Web Search)", ""]
-        for ln in _lines_from_text(search_snippets, 8):
-            lines.append(ln)
-        lines.append("")
-
-    if not peers_text and not local_result and not search_snippets:
-        lines.append(
-            "Competitive data requires a PSX ticker (for sector peer comparison) "
-            "or a completed Stage 1 web search scan."
-        )
 
     return "\n".join(lines)
 
@@ -633,14 +658,6 @@ def _render_overview(
                 lines.append(f"- {t}")
         lines.append("")
 
-    # News context
-    news_brief = getattr(data_summary, "news_brief", "") or ""
-    if news_brief:
-        lines += ["### Recent News Context", ""]
-        for ln in _lines_from_text(news_brief, 6):
-            lines.append(f"- {ln}" if not ln.startswith("-") else ln)
-        lines.append("")
-
     return "\n".join(lines)
 
 
@@ -734,14 +751,8 @@ def _render_country(
         except Exception:
             pass
 
-    # News for regulatory context
-    news_brief = getattr(data_summary, "news_brief", "") or ""
-    if news_brief:
-        lines += ["### Recent Regulatory & Policy Headlines", ""]
-        for ln in _lines_from_text(news_brief, 8):
-            lines.append(f"- {ln}" if not ln.startswith("-") else ln)
-        lines.append("")
-
+    # (Policy/regulatory headlines are consolidated in the World News module —
+    #  not repeated here — to avoid the same digest appearing in every section.)
     lines += [
         "### Pakistan Regulatory Landscape",
         "",
@@ -917,30 +928,26 @@ def _render_worldnews(
         "",
     ]
 
-    news_brief = getattr(data_summary, "news_brief", "") or ""
-    search_snippets = getattr(data_summary, "search_snippets", "") or ""
-
-    if news_brief:
-        lines += ["### Curated News Digest (relevance-ranked)", ""]
-        for ln in _lines_from_text(news_brief, 15):
-            lines.append(f"- {ln}" if not ln.startswith("-") else ln)
+    # This is the news home — show the full relevance-ranked digest here (only here).
+    bullets = _news_bullets(data_summary, 15)
+    analyst = getattr(data_summary, "analyst_note", "") or ""
+    if bullets:
+        lines += ["### Curated News Digest (relevance-ranked)",
+                  "_Filtered to the company and its sector's drivers._", ""]
+        for ln in bullets:
+            lines.append(f"- {ln}")
         lines.append("")
+    else:
+        lines += ["### Curated News Digest", "", _no_relevant_news_line(data_summary), ""]
+    if analyst:
+        lines += [f"**Analyst note:** {analyst}", ""]
 
+    search_snippets = getattr(data_summary, "search_snippets", "") or ""
     if search_snippets:
         lines += ["### Search Intelligence", ""]
         for ln in _lines_from_text(search_snippets, 10):
             lines.append(ln)
         lines.append("")
-
-    if not news_brief and not search_snippets:
-        lines += [
-            "No news data collected yet. Ensure RSS feeds are enabled and Stage 1 has run.",
-            "",
-            "**Default Pakistan news sources tracked:**",
-            "- Dawn, The News, Business Recorder, Geo TV",
-            "- PSX announcements feed",
-            "- SBP, FBR, SECP press releases",
-        ]
 
     return "\n".join(lines)
 
@@ -961,15 +968,11 @@ def _render_generic(
         "",
     ]
 
-    news_brief = getattr(data_summary, "news_brief", "") or ""
+    # NOTE: framework/qualitative extended modules do NOT re-dump the news digest —
+    # that lives in the World News module only (avoids the same brief appearing in
+    # every section). They use company-specific research + financial signals instead.
     search_snippets = getattr(data_summary, "search_snippets", "") or ""
     website_snippet = getattr(data_summary, "website_snippet", "") or ""
-
-    if news_brief:
-        lines += ["### News Context", ""]
-        for ln in _lines_from_text(news_brief, 6):
-            lines.append(f"- {ln}" if not ln.startswith("-") else ln)
-        lines.append("")
 
     if search_snippets:
         lines += ["### Research Findings", ""]
@@ -978,23 +981,23 @@ def _render_generic(
         lines.append("")
 
     if website_snippet:
-        lines += ["### Digital Presence", ""]
+        lines += ["### Company Digital Presence", ""]
         for ln in _lines_from_text(website_snippet, 4):
             lines.append(ln)
         lines.append("")
 
     if local_result:
         lines += [
-            "### Financial Summary",
+            "### Financial Signals",
             "",
             f"Health Score: {_num(local_result.get('health_score'), 1)}/10",
-            f"Revenue: {_num(local_result.get('revenue'), 0)} PKR mn",
+            f"Net Margin: {_pct(local_result.get('net_margin'))}  ·  ROE: {_pct(local_result.get('roe'))}",
         ]
 
-    if not news_brief and not search_snippets and not local_result:
+    if not search_snippets and not website_snippet and not local_result:
         lines.append(
-            "Analysis data for this module was not collected in Stage 1. "
-            "Run a full intelligence scan or upload relevant documents."
+            "No company-specific data was collected for this module in Stage 1. "
+            "To enable it: run a full web-search scan, upload documents, or provide a PSX ticker."
         )
 
     return "\n".join(lines)

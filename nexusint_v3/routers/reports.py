@@ -202,10 +202,15 @@ async def download_docx(request: Request, report_id: str):
             status_code=409,
         )
 
+    # Unique filename per download so a re-download never collides with a copy the
+    # user already has open in Word ("the report is open elsewhere" on Windows).
+    from datetime import datetime as _dt
+    _biz = "".join(c for c in (record.get("business_name") or "report") if c.isalnum() or c in " -_").strip()[:40] or "report"
+    _fname = f"{_biz}_{report_id[:6]}_{_dt.now().strftime('%Y%m%d-%H%M%S')}.docx"
     return Response(
         content=docx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={
-            "Content-Disposition": f'attachment; filename="report_{report_id[:8]}.docx"',
+            "Content-Disposition": f'attachment; filename="{_fname}"',
         },
     )

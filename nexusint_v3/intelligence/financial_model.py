@@ -27,6 +27,31 @@ import structlog
 
 log = structlog.get_logger()
 
+def _guess_ticker(business_name: str) -> str:
+    """
+    Attempt to match a business name to a PSX ticker from the database.
+    Returns empty string if no match found.
+    """
+    try:
+        from database.connection import get_db
+        db = get_db()
+        # Exact match
+        row = db.execute(
+            "SELECT ticker FROM psx_companies WHERE LOWER(company_name) = LOWER(?)",
+            (business_name.strip(),)
+        ).fetchone()
+        if row:
+            return row["ticker"]
+        # Partial match
+        row = db.execute(
+            "SELECT ticker FROM psx_companies WHERE LOWER(company_name) LIKE LOWER(?)",
+            (f"%{business_name.strip()}%",)
+        ).fetchone()
+        if row:
+            return row["ticker"]
+        return ""
+    except Exception:
+        return ""
 
 # ── Data structures ───────────────────────────────────────────────────────────
 
@@ -288,10 +313,10 @@ def analyse_from_document(
 
         result.liquidity     = _compute_liquidity(current_assets, current_liabilities, inventory, ocf, result.cash)
         result.profitability = _compute_profitability(result.revenue, result.gross_profit, result.ebitda, result.ebit, result.net_income, result.total_assets, result.shareholders_equity)
-        result.leverage      = _compute_leverage(result.total_debt, result.shareholders_equity, result.ebitda, result.ebit, result.cash, None)
+        result.leverage      = _compute_leverage(result.total_debt, result.shareholders_equity, result.ebitda, result.ebit, result.cash, g.get("interest_expense"))
         result.efficiency    = _compute_efficiency(result.revenue, result.total_assets, receivables, payables, inventory, result.gross_profit)
         result.growth        = _compute_growth(revenue_history, result.gross_profit, result.ebitda, None)
-        result.altman_z      = _compute_altman_z(current_assets, current_liabilities, result.total_assets, result.total_debt, result.shareholders_equity, result.revenue, result.ebit, result.cash)
+        result.altman_z      = _compute_altman_z(current_assets, current_liabilities, result.total_assets, result.total_debt, result.shareholders_equity, result.revenue, result.ebit, result.cash, g.get("retained_earnings"))
         result.dupont        = _compute_dupont(result.net_income, result.revenue, result.total_assets, result.shareholders_equity)
         result.working_capital = _compute_working_capital(current_assets, current_liabilities, result.revenue, revenue_history)
         result.dcf           = _compute_dcf(result.revenue, result.ebitda, None, result.growth.revenue_growth_yoy, result.total_debt, result.cash, region_id)
@@ -371,7 +396,7 @@ def _compute_profitability(revenue, gross_profit, ebitda, ebit, net_income, tota
     return r
 
 
-def _compute_leverage(total_debt, equity, ebitda, ebit, cash, income_stmt) -> LeverageRatios:
+def _compute_leverage(total_debt, equity, ebitda, ebit, cash, interest_expense=None) -> LeverageRatios:
     r = LeverageRatios()
     r.debt_to_equity = _safe_div(total_debt, equity)
 
@@ -380,18 +405,13 @@ def _compute_leverage(total_debt, equity, ebitda, ebit, cash, income_stmt) -> Le
         r.net_debt_to_equity = _safe_div(r.net_debt, equity)
         r.debt_to_ebitda     = _safe_div(r.net_debt, ebitda)
 
-    # Interest coverage — try to get interest expense from income statement
-    interest_expense = None
-    if income_stmt is not None:
-        try:
-            interest_expense = income_stmt[income_stmt.columns[0]].get("Interest Expense")
-            if interest_expense is not None:
-                interest_expense = abs(float(interest_expense))
-        except Exception:
-            pass
-
-    if interest_expense and interest_expense > 0:
-        r.interest_coverage = _safe_div(ebit, interest_expense)
+    # Interest coverage — from the explicit interest_expense (PSX statements / documents).
+    try:
+        ie = abs(float(interest_expense)) if interest_expense is not None else None
+    except Exception:
+        ie = None
+    if ie and ie > 0:
+        r.interest_coverage = _safe_div(ebit, ie)
 
     # Interpretation
     flags = []
@@ -458,7 +478,7 @@ def _compute_growth(revenue_history: list, gross_profit, ebitda, income_stmt) ->
     return r
 
 
-def _compute_altman_z(current_assets, current_liabilities, total_assets, total_debt, equity, revenue, ebit, cash) -> AltmanZScore:
+def _compute_altman_z(current_assets, current_liabilities, total_assets, total_debt, equity, revenue, ebit, cash, retained_earnings=None) -> AltmanZScore:
     r = AltmanZScore()
 
     try:
@@ -468,7 +488,9 @@ def _compute_altman_z(current_assets, current_liabilities, total_assets, total_d
             return r
 
         working_capital     = current_assets - current_liabilities
-        retained_earnings   = equity * 0.4 if equity else 0    # Approximation
+        # Use reported retained earnings when available; else approximate from equity.
+        if retained_earnings is None:
+            retained_earnings = equity * 0.4 if equity else 0
         market_cap_proxy    = equity if equity and equity > 0 else 1
 
         x1 = working_capital / total_assets

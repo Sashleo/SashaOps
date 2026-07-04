@@ -21,7 +21,7 @@ from config.regions import get_all_feeds_for_region, RSSFeed
 log = structlog.get_logger()
 
 FEED_TIMEOUT_SECONDS = 12
-MAX_CONCURRENT_FEEDS = 10
+MAX_CONCURRENT_FEEDS = 18   # fetch nearly all feeds in one wave to cut wall-clock time
 
 
 @dataclass
@@ -38,6 +38,10 @@ class FeedItem:
     classification: str = "NEUTRAL"   # THREAT | OPPORTUNITY | NEUTRAL
     magnitude: int = 0     # 1–10 significance for the subject business
     rationale: str = ""
+    # ── deterministic relevance (intelligence/news_relevance.py) ────────────────
+    relevance_score: float = 0.0      # 0..1+ blended relevance to subject company/sector
+    relevance_tags: list = field(default_factory=list)  # why matched: company/sector/driver:*/macro
+    impact: Optional[int] = None      # directional sentiment for a matched driver (+1/-1/None)
 
 
 @dataclass

@@ -314,7 +314,7 @@ def run_fast(prompt: str, sanitiser=None) -> str:
     if sanitiser is not None:
         prompt = sanitiser.sanitise(prompt)
     try:
-        model = _get_model(temperature=0.3)
+        model = get_fast_model()
         response = model.generate_content(prompt)
         text = response.text or ""
         if sanitiser is not None:

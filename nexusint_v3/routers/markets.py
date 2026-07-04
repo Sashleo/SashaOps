@@ -292,9 +292,30 @@ async def analyse_local(
     structured analysis (Altman Z breakdown, DuPont, DCF scenarios, FinBERT).
     """
     require_session(request)
-    ticker = ticker.strip().upper()
-    if not ticker:
-        return HTMLResponse('<div class="alert alert-error">Enter a ticker symbol.</div>')
+    raw_input = (ticker or "").strip()
+    if not raw_input:
+        return HTMLResponse('<div class="alert alert-error">Enter a company name or PSX ticker.</div>')
+
+    # Resolve a company NAME to a PSX ticker (the field accepts either). This stops
+    # the "kept trying to fetch" hang when a name (or a typo) was entered.
+    ticker = raw_input.upper()
+    try:
+        from core.stage1 import _guess_ticker
+        from database.connection import get_db as _gdb
+        exists = _gdb().execute(
+            "SELECT 1 FROM psx_companies WHERE UPPER(symbol)=? LIMIT 1", (ticker,)
+        ).fetchone()
+        if not exists:
+            resolved = _guess_ticker(raw_input)
+            if resolved:
+                ticker = resolved.upper()
+            else:
+                return HTMLResponse(
+                    f'<div class="alert alert-error">Could not find a PSX company matching '
+                    f'"{raw_input}". Check the spelling or enter the ticker directly.</div>'
+                )
+    except Exception:
+        pass
 
     loop = asyncio.get_running_loop()
 
@@ -317,9 +338,23 @@ async def analyse_local(
             ).fetchone()
             if _co and _co["sector_name"]:
                 _sector = _co["sector_name"]
+                # Derive P/E from latest price / latest annual EPS (psx_companies has
+                # no pe_ratio column). LEFT JOIN so peers without EPS still list.
                 _prows  = _db.execute(
-                    """SELECT c.symbol, c.company_name, c.pe_ratio
+                    """SELECT c.symbol, c.company_name, p.current AS price, f.eps AS eps
                        FROM psx_companies c
+                       LEFT JOIN (
+                           SELECT symbol, current FROM psx_prices
+                           WHERE (symbol, trade_date) IN (
+                               SELECT symbol, MAX(trade_date) FROM psx_prices GROUP BY symbol)
+                       ) p ON c.symbol = p.symbol
+                       LEFT JOIN (
+                           SELECT symbol, eps FROM psx_financials
+                           WHERE period_type='annual' AND eps IS NOT NULL
+                             AND (symbol, period) IN (
+                               SELECT symbol, MAX(period) FROM psx_financials
+                               WHERE period_type='annual' AND eps IS NOT NULL GROUP BY symbol)
+                       ) f ON c.symbol = f.symbol
                        WHERE c.sector_name = ? AND c.symbol != ? AND c.is_debt = 0
                        ORDER BY c.company_name LIMIT 10""",
                     (_sector, ticker),
@@ -327,7 +362,8 @@ async def analyse_local(
                 if _prows:
                     _plines = [f"PSX SECTOR PEERS — {_sector}\n"]
                     for _p in _prows:
-                        _pe = f"  P/E {_p['pe_ratio']:.1f}x" if _p["pe_ratio"] else "  P/E N/A"
+                        _peval = (_p["price"] / _p["eps"]) if (_p["price"] and _p["eps"] and _p["eps"] > 0) else None
+                        _pe = f"  P/E {_peval:.1f}x" if _peval else "  P/E N/A"
                         _plines.append(f"  {_p['symbol']:8} {_p['company_name'][:35]}{_pe}")
                     peers = "\n".join(_plines)
         except Exception:
@@ -338,7 +374,15 @@ async def analyse_local(
         return result, full_md
 
     try:
-        result, full_md = await loop.run_in_executor(None, _analyse)
+        # Hard cap so a slow PSX scrape/OCR can't hang the request indefinitely.
+        result, full_md = await asyncio.wait_for(
+            loop.run_in_executor(None, _analyse), timeout=45,
+        )
+    except asyncio.TimeoutError:
+        return HTMLResponse(
+            f'<div class="alert alert-error">Analysis for {ticker} timed out (financial '
+            f'data is slow to fetch right now). Please try again in a moment.</div>'
+        )
     except ValueError as e:
         return HTMLResponse(f'<div class="alert alert-error">{e}</div>')
     except Exception as e:

@@ -20,6 +20,7 @@ compact macro block for AI prompt injection.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from typing import Optional, List
 
@@ -28,6 +29,32 @@ from database.connection import get_db
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+_MONTHS = {m: i for i, m in enumerate(
+    ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
+
+
+def _period_key(period: str) -> tuple:
+    """
+    Turn a period label into a chronologically-sortable (year, month) key so the
+    'latest' record is picked by real date, not lexical string order. Handles
+    '2025-06', 'Jun-2025', 'June 2025', 'FY2025', '13-Jun-2025', bare '2025'.
+    Unparseable → (0, 0) so it never beats a dated record.
+    """
+    s = (period or "").lower()
+    ym = re.search(r"(19|20)\d{2}", s)
+    year = int(ym.group(0)) if ym else 0
+    month = 0
+    for name, num in _MONTHS.items():
+        if name in s:
+            month = num
+            break
+    if not month:
+        mm = re.search(r"\b(0?[1-9]|1[0-2])\b", re.sub(r"(19|20)\d{2}", "", s))
+        if mm:
+            month = int(mm.group(0))
+    return (year, month)
 
 
 # ── Upserts ───────────────────────────────────────────────────────────────────
@@ -171,12 +198,21 @@ def upsert_global_peer(industry: str, peer_ticker: str, peer_name: str = "",
 # ── Read helpers ──────────────────────────────────────────────────────────────
 
 def get_sbp_indicator(indicator: str) -> Optional[dict]:
+    """Return the chronologically-latest reading for an SBP indicator.
+
+    Picks by parsed period date (not lexical string order), with fetched_at as the
+    tiebreak — so e.g. a current 11% policy rate isn't shadowed by an older 'Jun'
+    record that happens to sort after 'Jan' alphabetically.
+    """
     db = get_db()
-    row = db.execute(
-        "SELECT * FROM sbp_indicators WHERE indicator = ? ORDER BY period DESC LIMIT 1",
+    rows = db.execute(
+        "SELECT * FROM sbp_indicators WHERE indicator = ? ORDER BY fetched_at DESC LIMIT 24",
         (indicator,),
-    ).fetchone()
-    return dict(row) if row else None
+    ).fetchall()
+    if not rows:
+        return None
+    best = max(rows, key=lambda r: (_period_key(r["period"]), r["fetched_at"] or ""))
+    return dict(best)
 
 
 def get_ogra_price(product: str) -> Optional[dict]:

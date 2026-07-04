@@ -64,6 +64,12 @@ _DOC_MAP: list[tuple[list[str], str]] = [
     (["trade payables", "trade and other payables", "payables"], "payables"),
     (["cash from operations", "net cash from operating", "operating cash flow"], "ocf"),
     (["capital expenditure", "capex", "additions to property"], "capex"),
+    (["finance cost", "finance costs", "interest expense", "markup expense",
+      "mark-up expense"], "interest_expense"),
+    (["depreciation and amortisation", "depreciation & amortization",
+      "depreciation and amortization", "depreciation"], "depreciation"),
+    (["retained earnings", "unappropriated profit", "accumulated profit",
+      "reserves and retained earnings"], "retained_earnings"),
     (["eps", "earnings per share", "basic eps", "diluted eps",
       "earnings per share - basic"], "eps"),
 ]
@@ -110,9 +116,17 @@ def _build_doc_financials(table: dict) -> dict:
     """Map a PSX financial table {metric:{period:value}} → analyse_from_document dict."""
     out: dict = {}
     rev_series: List[float] = []
-    latest_year: Optional[str] = None
+    max_year = -1                      # latest 4-digit year seen across ALL metrics
     for metric, value_map in (table or {}).items():
         n = _norm(metric)
+        # Track the latest fiscal year across every metric — banks/pharma may not
+        # match the "revenue" alias first, so keying FY off revenue alone gave "FY None".
+        if isinstance(value_map, dict):
+            for p, v in value_map.items():
+                if isinstance(v, (int, float)):
+                    y = _year_of(p)
+                    if y > max_year:
+                        max_year = y
         for aliases, key in _DOC_MAP:
             if any(n == a or n.startswith(a) for a in aliases):
                 series = _series(value_map)
@@ -120,22 +134,54 @@ def _build_doc_financials(table: dict) -> dict:
                     out.setdefault(key, series[0])
                     if key == "revenue" and not rev_series:
                         rev_series = series
-                        # Capture the most recent fiscal year label
-                        if isinstance(value_map, dict):
-                            yrs = sorted(
-                                [p for p, v in value_map.items() if isinstance(v, (int, float))],
-                                key=_year_of, reverse=True,
-                            )
-                            if yrs:
-                                latest_year = str(yrs[0])
                 break
     if len(rev_series) > 1:
         out["revenue_prior_year"] = rev_series[1]
     if len(rev_series) > 2:
         out["revenue_2y_ago"] = rev_series[2]
-    if latest_year:
-        out["_fiscal_year"] = latest_year
+    if max_year > 0:
+        out["_fiscal_year"] = str(max_year)
     return out
+
+
+# DB columns → analyse_from_document keys (mostly identity; equity is aliased).
+_ROW_TO_DOC = {
+    "revenue": "revenue", "gross_profit": "gross_profit", "ebitda": "ebitda",
+    "net_income": "net_income", "total_assets": "total_assets",
+    "total_equity": "shareholders_equity", "total_debt": "total_debt", "cash": "cash",
+    "current_assets": "current_assets", "current_liabilities": "current_liabilities",
+    "eps": "eps", "ebit": "ebit", "retained_earnings": "retained_earnings",
+    "inventory": "inventory", "receivables": "receivables", "payables": "payables",
+    "interest_expense": "interest_expense", "depreciation": "depreciation",
+    "ocf": "ocf", "capex": "capex",
+}
+
+
+def _row_to_doc(row: dict) -> dict:
+    """Rebuild an analyse_from_document dict from a persisted psx_financials row."""
+    doc: dict = {}
+    for col, key in _ROW_TO_DOC.items():
+        v = row.get(col)
+        if v is not None:
+            doc[key] = v
+    if row.get("period"):
+        doc["_fiscal_year"] = str(row["period"])
+    return doc
+
+
+def _is_fresh(fetched_at: Optional[str], max_age_hours: int = 24) -> bool:
+    """True if an ISO timestamp is within max_age_hours of now."""
+    if not fetched_at:
+        return False
+    try:
+        from datetime import datetime, timezone
+        ts = datetime.fromisoformat(fetched_at)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - ts).total_seconds() / 3600.0
+        return age <= max_age_hours
+    except Exception:
+        return False
 
 
 def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
@@ -144,6 +190,7 @@ def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
     analyse_from_document(). Returns None if no usable revenue figure is found.
 
     Data priority:
+    0. FRESH cache fast-path — a psx_financials row < 24h old (skips scrape + OCR).
     1. Live PSX DPS scraper (annual financials → quarterly fallback)
     2. Cached psx_financials DB rows (from a prior scrape)
     3. psx_companies summary (market cap only — enables health score / DCF stub)
@@ -151,6 +198,28 @@ def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
     ticker = (ticker or "").strip().upper()
     if not ticker:
         return None
+
+    # ── Fast path: a recent, revenue-bearing annual row means we can skip the slow
+    # live scrape + PDF/OCR entirely (accuracy preserved — same persisted figures).
+    try:
+        for row in get_cached_financials(ticker):
+            if row.get("revenue") and _is_fresh(row.get("fetched_at")):
+                doc = _row_to_doc(row)
+                doc["_source"] = "psx_financials_cache"
+                name = ticker
+                try:
+                    from intelligence.exchange_crawlers.psx import search_psx_company
+                    for s in search_psx_company(ticker):
+                        if (s.get("symbol") or "").upper() == ticker:
+                            name = s.get("name") or ticker
+                            break
+                except Exception:
+                    pass
+                log.info("PSX financials served from 24h cache", ticker=ticker)
+                return doc, name
+    except Exception as _ce:
+        log.debug("PSX financials fresh-cache check failed", error=str(_ce)[:80])
+
     data = fetch_psx_company(ticker, fetch_types=["financials", "ratios", "announcements"])
 
     doc: dict = {}
@@ -236,6 +305,7 @@ def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
     # complete, internally-consistent set (revenue + net income + total assets).
     # Otherwise the clean summary stands (margins / health / DCF still compute).
     source = "psx_summary"
+    summary_fy = doc.get("_fiscal_year")   # preserve FY if the report path replaces doc
     try:
         from intelligence.psx_report_parser import fetch_psx_report_financials
         report = fetch_psx_report_financials(ticker)
@@ -243,6 +313,8 @@ def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
             # EBITDA from operating profit + depreciation when not stated directly.
             if "ebitda" not in report and report.get("ebit") and report.get("depreciation"):
                 report["ebitda"] = report["ebit"] + report["depreciation"]
+            if not report.get("_fiscal_year") and summary_fy:
+                report["_fiscal_year"] = summary_fy
             doc = report
             source = "psx_annual_report_ocr" if report.get("_ocr") else "psx_annual_report"
     except Exception as e:
@@ -267,14 +339,15 @@ def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
 
     # Persist the parsed statement so psx_financials builds a history.
     try:
-        period = "latest"
-        rev_map = (data.get("annual_financials") or {})
-        for metric, vm in rev_map.items():
-            if _norm(metric).startswith(("net sales", "revenue", "sales")):
-                yrs = [p for p, v in vm.items() if isinstance(v, (int, float))]
-                if yrs:
-                    period = str(sorted(yrs, key=_year_of, reverse=True)[0])
-                break
+        period = doc.get("_fiscal_year") or "latest"
+        if period == "latest":
+            rev_map = (data.get("annual_financials") or {})
+            for metric, vm in rev_map.items():
+                if _norm(metric).startswith(("net sales", "revenue", "sales")):
+                    yrs = [p for p, v in vm.items() if isinstance(v, (int, float))]
+                    if yrs:
+                        period = str(sorted(yrs, key=_year_of, reverse=True)[0])
+                    break
         upsert_psx_financials(ticker, period, "annual", doc, raw=ratios)
     except Exception as e:
         log.info("PSX financials persist skipped", ticker=ticker, error=str(e)[:80])

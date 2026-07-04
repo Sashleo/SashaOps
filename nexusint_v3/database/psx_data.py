@@ -90,7 +90,20 @@ _FIN_COLS = (
     "revenue", "gross_profit", "ebitda", "net_income", "total_assets",
     "total_equity", "total_debt", "cash", "current_assets",
     "current_liabilities", "eps",
+    "ebit", "retained_earnings", "inventory", "receivables", "payables",
+    "interest_expense", "depreciation", "ocf", "capex",
 )
+
+# The analysis dict uses slightly different key names than the DB columns.
+_FIN_ALIASES = {"total_equity": "shareholders_equity"}
+
+
+def _fin_value(metrics: dict, col: str):
+    """Read a financial column value, honouring analysis-dict key aliases."""
+    v = metrics.get(col)
+    if v is None and col in _FIN_ALIASES:
+        v = metrics.get(_FIN_ALIASES[col])
+    return v
 
 
 def upsert_psx_financials(symbol: str, period: str, period_type: str,
@@ -100,7 +113,7 @@ def upsert_psx_financials(symbol: str, period: str, period_type: str,
     cols = ["symbol", "period", "period_type", *_FIN_COLS, "raw_json", "fetched_at"]
     vals = [
         symbol.upper(), period, period_type,
-        *[metrics.get(c) for c in _FIN_COLS],
+        *[_fin_value(metrics, c) for c in _FIN_COLS],
         json.dumps(raw) if raw is not None else None,
         _now(),
     ]

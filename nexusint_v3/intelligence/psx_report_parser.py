@@ -83,6 +83,8 @@ _LABELS: list[tuple[str, list[str]]] = [
                              "owners equity", "net assets",
                              "equity attributable to owners of the bank",
                              "total equity attributable to shareholders"]),
+    ("retained_earnings",   ["unappropriated profit", "unappropriated profits",
+                             "retained earnings", "accumulated profit"]),
     ("total_debt",          ["long term financing", "long-term financing",
                              "long term borrowings", "long-term borrowings",
                              "long term loans", "borrowings", "long-term debt",

@@ -114,9 +114,14 @@ function showToast(msg, type = 'info', duration = 4000) {
   setTimeout(() => el.remove(), duration);
 }
 
-// HTMX error handler
+// HTMX error handler — only surface genuine server errors (5xx). Benign cases
+// (aborted/navigated-away requests with status 0, or expected 4xx handled inline)
+// should not pop the global error toast.
 document.addEventListener('htmx:responseError', (e) => {
-  showToast('SashaOps encountered an error. Please try again.', 'error');
+  const status = e.detail && e.detail.xhr ? e.detail.xhr.status : 0;
+  if (status >= 500) {
+    showToast('SashaOps encountered an error. Please try again.', 'error');
+  }
 });
 
 // Loading state: disable clicked buttons while request is in flight

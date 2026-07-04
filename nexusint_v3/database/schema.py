@@ -287,6 +287,15 @@ CREATE TABLE IF NOT EXISTS psx_financials (
     current_assets      REAL,
     current_liabilities REAL,
     eps           REAL,
+    ebit               REAL,
+    retained_earnings  REAL,
+    inventory          REAL,
+    receivables        REAL,
+    payables           REAL,
+    interest_expense   REAL,
+    depreciation       REAL,
+    ocf                REAL,
+    capex              REAL,
     raw_json      TEXT,
     fetched_at    TEXT NOT NULL,
     UNIQUE(symbol, period, period_type)
@@ -509,6 +518,10 @@ def run_migrations() -> None:
 def _apply_column_additions(db) -> None:
     """Add new columns to existing tables that predate them (idempotent)."""
     _add_column_if_missing(db, "psx_companies", "market_cap", "REAL")
+    # Balance-sheet / cash-flow columns for richer ratios (Altman, coverage, peer comp).
+    for _col in ("ebit", "retained_earnings", "inventory", "receivables", "payables",
+                 "interest_expense", "depreciation", "ocf", "capex"):
+        _add_column_if_missing(db, "psx_financials", _col, "REAL")
 
 
 def _add_column_if_missing(db, table: str, column: str, col_type: str) -> None:

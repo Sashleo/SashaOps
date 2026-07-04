@@ -24,7 +24,7 @@ from intelligence.feeds import fetch_feeds_for_region, classify_headlines
 from intelligence.stocks import fetch_region_market_data
 from intelligence.search import multi_search, format_search_results
 from intelligence.browser import extract_company_website_content
-from intelligence.news_analyser import analyse_news_for_business, format_brief_for_prompt
+from intelligence.news_analyser import format_brief_for_prompt
 from intelligence.extended_analysis import EXTENDED_MODULES
 from database.exchange_data import get_forex_summary_text, get_index_summary_text
 from intelligence.financial_model import format_ratios_for_prompt
@@ -120,9 +120,10 @@ async def run_stage1(run_id, client_id, business_name, region_id, module_list,
         ]
         if feed_result.items:
             classify_headlines(feed_result.items, business_name, region_id)
-        sorted_items = sorted(feed_result.items, key=lambda x: x.magnitude, reverse=True)
+        # sample_headlines is (re)built by relevance after industry/ticker resolve below.
         summary.sample_headlines = [
-            f"{item.title} [{item.feed_label}]" for item in sorted_items[:5]
+            f"{item.title} [{item.feed_label}]"
+            for item in sorted(feed_result.items, key=lambda x: x.magnitude, reverse=True)[:5]
         ]
 
         # ── Pre-step: resolve PSX ticker + profile (fast, drives the rest) ────
@@ -182,11 +183,6 @@ async def run_stage1(run_id, client_id, business_name, region_id, module_list,
                         pass
             return results
 
-        def _news_brief():
-            if not feed_result.items:
-                return None
-            return analyse_news_for_business(business_name, region_id, feed_result)
-
         def _local_check():
             """PSX financial analysis from local database."""
             if not ticker:
@@ -202,15 +198,13 @@ async def run_stage1(run_id, client_id, business_name, region_id, module_list,
         _queries.__name__     = "keyword_search"
         _website.__name__     = "website_scrape"
         _gov_data.__name__    = "gov_scrapers"
-        _news_brief.__name__  = "news_brief"
         _local_check.__name__ = "local_financial_check"
 
-        market_res, search_res, website_res, gov_res, news_res, local_check_res = await asyncio.gather(
+        market_res, search_res, website_res, gov_res, local_check_res = await asyncio.gather(
             _bounded(_market,      timeout_s=20),
             _bounded(_queries,     timeout_s=30),
             _bounded(_website,     timeout_s=35),
             _bounded(_gov_data,    timeout_s=25),
-            _bounded(_news_brief,  timeout_s=45),
             _bounded(_local_check, timeout_s=25),
             return_exceptions=False,
         )
@@ -272,11 +266,30 @@ async def run_stage1(run_id, client_id, business_name, region_id, module_list,
             except Exception:
                 summary.ratios_text = ""
 
-        # ── Unpack news brief ─────────────────────────────────────────────────
-        if news_res is not None:
-            summary.news_brief       = format_brief_for_prompt(news_res)
-            summary.analyst_note     = news_res.analyst_note or ""
-            summary.market_sentiment = news_res.market_sentiment or ""
+        # ── News brief — built LOCALLY (deterministic relevance, no Gemini) ───
+        # Score every headline against the subject company + its sector drivers, then
+        # assemble the brief. Also re-rank sample_headlines by true relevance now that
+        # ticker + industry are resolved (the label promises "by relevance").
+        if feed_result.items:
+            try:
+                from intelligence.news_analyser import build_local_brief
+                from intelligence.news_relevance import is_relevant
+                brief = build_local_brief(
+                    business_name, region_id, feed_result,
+                    ticker=ticker or "", industry=industry or "", sector=psx_sector or "",
+                )
+                summary.news_brief       = format_brief_for_prompt(brief)
+                summary.analyst_note     = brief.analyst_note or ""
+                summary.market_sentiment = brief.market_sentiment or ""
+                ranked = sorted(feed_result.items,
+                                key=lambda x: getattr(x, "relevance_score", 0.0), reverse=True)
+                summary.sample_headlines = [
+                    f"{it.title} [{it.feed_label}]"
+                    + ("  ✓ relevant" if is_relevant(it) else "")
+                    for it in ranked[:5]
+                ]
+            except Exception as e:
+                log.warning("Local news brief failed", error=str(e)[:120])
 
         # ── Client documents (private/unlisted company analysis) ──────────────
         # Decrypt + extract text from the client's selected (or all) documents.

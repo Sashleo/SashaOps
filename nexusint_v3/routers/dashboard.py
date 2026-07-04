@@ -76,24 +76,33 @@ async def dashboard(request: Request):
 
 
 @router.post("/set-client")
-async def set_client(request: Request, client_id: str = Form(...)):
-    """Change the active client in the session."""
-    require_session(request)
-    token = request.cookies.get("sashaops_session")
-    if token and client_id:
-        update_session_client(token, client_id)
-        touch_client(client_id)
-
-    clients      = list_clients()
-    active_client = next((c for c in clients if c["id"] == client_id), None)
-
-    # Return the updated client indicator snippet
-    if active_client:
-        html = f'<div id="client-indicator" style="margin-bottom:6px"><span style="color:var(--accent)">●</span> {active_client["name"]}</div>'
-    else:
-        html = '<div id="client-indicator" style="margin-bottom:6px"><span style="color:var(--text-dim)">●</span> No client selected</div>'
-
+async def set_client(request: Request, client_id: str = Form("")):
+    """
+    Change the active client in the session. This must never 500 — a non-2xx here
+    fires the global htmx error toast ("SashaOps encountered an error"), which is
+    exactly the spurious top-right error seen when selecting a client. All mutations
+    are best-effort and the indicator is always returned with a 200.
+    """
     from fastapi.responses import HTMLResponse
+    require_session(request)
+
+    active_client = None
+    try:
+        token = request.cookies.get("sashaops_session")
+        if token and client_id:
+            update_session_client(token, client_id)
+            touch_client(client_id)
+        clients       = list_clients()
+        active_client = next((c for c in clients if c["id"] == client_id), None)
+    except Exception as e:
+        log.warning("set_client failed (returning indicator anyway)", error=str(e)[:120])
+
+    if active_client:
+        html = (f'<div id="client-indicator" style="margin-bottom:6px">'
+                f'<span style="color:var(--accent)">●</span> {active_client["name"]}</div>')
+    else:
+        html = ('<div id="client-indicator" style="margin-bottom:6px">'
+                '<span style="color:var(--text-dim)">●</span> No client selected</div>')
     return HTMLResponse(html)
 
 

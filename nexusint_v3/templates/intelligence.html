@@ -147,13 +147,24 @@
   {% endif %}
 
   <!-- Action -->
-  <button class="stage-gate-btn"
-          hx-post="/intelligence/gate/{{ run_state.run_id }}/approve"
-          hx-target="#page-content"
-          hx-swap="innerHTML"
-          hx-select="#page-content">
-    {{ run_state.next_action_label }}
-  </button>
+  <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+    <button class="stage-gate-btn"
+            hx-post="/intelligence/gate/{{ run_state.run_id }}/approve"
+            hx-target="#page-content"
+            hx-swap="innerHTML"
+            hx-select="#page-content">
+      ▶ Proceed to Analysis (Stage 2)
+    </button>
+    <button class="btn"
+            hx-post="/intelligence/run/{{ run_state.run_id }}/cancel"
+            hx-swap="none"
+            style="font-size:0.82em">
+      ✕ Cancel &amp; start over
+    </button>
+  </div>
+  <div style="font-size:0.74em; color:var(--text-dim); margin-top:8px">
+    This runs the {{ run_state.modules_pending | length if run_state.modules_pending else '' }} analysis modules — it does not start a new scan.
+  </div>
 
 </div><!-- Stage 1 briefing card -->
 
@@ -181,7 +192,13 @@
             hx-target="#page-content"
             hx-swap="innerHTML"
             hx-select="#page-content">
-      {{ run_state.next_action_label }}
+      📄 Generate Report
+    </button>
+    <button class="btn"
+            hx-post="/intelligence/run/{{ run_state.run_id }}/cancel"
+            hx-swap="none"
+            style="font-size:0.82em">
+      ✕ Discard
     </button>
   </div>
 </div>

@@ -102,27 +102,89 @@ def render_docx(report_data: dict) -> Tuple[Optional[bytes], Optional[str]]:
         return None, str(e)
 
 
+def _clean_inline(s: str) -> str:
+    """Strip inline markdown markers for plain Word text."""
+    s = re.sub(r"\*\*(.+?)\*\*", r"\1", s)
+    s = re.sub(r"(?<!\*)\*(?!\*)(.+?)\*", r"\1", s)
+    s = re.sub(r"_(.+?)_", r"\1", s)
+    return s
+
+
+def _flush_table(doc, rows: list) -> None:
+    """Render accumulated pipe-table rows as a real Word table."""
+    if not rows:
+        return
+    ncols = max(len(r) for r in rows)
+    table = doc.add_table(rows=0, cols=ncols)
+    try:
+        table.style = "Light Grid Accent 1"
+    except Exception:
+        pass
+    for i, cells in enumerate(rows):
+        cells = cells + [""] * (ncols - len(cells))
+        wrow = table.add_row().cells
+        for j, c in enumerate(cells):
+            wrow[j].text = _clean_inline(c)
+            if i == 0:  # header row bold
+                for para in wrow[j].paragraphs:
+                    for run in para.runs:
+                        run.bold = True
+
+
 def _add_markdown_content(doc, text: str) -> None:
-    """Add markdown-formatted text to a Word document."""
+    """Add markdown-formatted text (headings, tables, lists, bold) to a Word document."""
+    table_rows: list = []
+    in_code = False
+
+    def _flush():
+        nonlocal table_rows
+        if table_rows:
+            _flush_table(doc, table_rows)
+            table_rows = []
+
     for line in text.split("\n"):
         line = line.rstrip()
 
+        if line.strip() == "```":
+            _flush(); in_code = not in_code
+            continue
+        if in_code:
+            doc.add_paragraph(line, style="No Spacing" if _has_style(doc, "No Spacing") else None)
+            continue
+
+        is_table_row = line.strip().startswith("|") and line.strip().endswith("|")
+        if is_table_row:
+            cells = [c.strip() for c in line.strip()[1:-1].split("|")]
+            if all(set(c.replace(" ", "")) <= set("-:") for c in cells):
+                continue  # separator row
+            table_rows.append(cells)
+            continue
+        else:
+            _flush()
+
         if line.startswith("## "):
-            doc.add_heading(line[3:], level=2)
+            doc.add_heading(_clean_inline(line[3:]), level=2)
         elif line.startswith("### "):
-            doc.add_heading(line[4:], level=3)
+            doc.add_heading(_clean_inline(line[4:]), level=3)
         elif line.startswith("**") and line.endswith("**"):
-            p    = doc.add_paragraph()
-            run  = p.add_run(line.strip("*"))
+            p   = doc.add_paragraph()
+            run = p.add_run(line.strip("*"))
             run.bold = True
         elif line.startswith("- ") or line.startswith("* "):
-            doc.add_paragraph(line[2:], style="List Bullet")
+            doc.add_paragraph(_clean_inline(line[2:]), style="List Bullet")
         elif line.strip() == "":
             doc.add_paragraph()
         else:
-            # Strip inline bold markers for plain paragraphs
-            clean = re.sub(r"\*\*(.+?)\*\*", r"\1", line)
-            doc.add_paragraph(clean)
+            doc.add_paragraph(_clean_inline(line))
+
+    _flush()
+
+
+def _has_style(doc, name: str) -> bool:
+    try:
+        return name in [s.name for s in doc.styles]
+    except Exception:
+        return False
 
 
 def save_docx(docx_bytes: bytes, output_path: str) -> Tuple[bool, Optional[str]]:
