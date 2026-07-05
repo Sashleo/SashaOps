@@ -34,7 +34,7 @@ HEADERS = {
 MAX_PAGES = 80          # annual reports are long; cap pages scanned
 OCR_MAX_PAGES = 40      # OCR is slow — cap pages when falling back to OCR
 OCR_DPI = 200
-DOWNLOAD_TIMEOUT = 30
+DOWNLOAD_TIMEOUT = 20   # hard cap on the annual-report PDF download
 MIN_TEXT_LAYER_CHARS = 400   # below this, treat the PDF as scanned and OCR it
 
 # Line-item label aliases → analyse_from_document key. Order matters: the first
@@ -81,6 +81,7 @@ _LABELS: list[tuple[str, list[str]]] = [
                              "total shareholders equity", "shareholders' equity",
                              "total share holders equity", "total stockholders equity",
                              "owners equity", "net assets",
+                             "share capital and reserves", "capital and reserves",
                              "equity attributable to owners of the bank",
                              "total equity attributable to shareholders"]),
     ("retained_earnings",   ["unappropriated profit", "unappropriated profits",

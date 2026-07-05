@@ -113,6 +113,7 @@ class AltmanZScore:
     zone: str = ""
     components: dict = field(default_factory=dict)
     interpretation: str = ""
+    model: str = ""   # "Altman Z (standard)" | "Altman Z'' (bank/non-manufacturer)"
 
 
 @dataclass
@@ -261,6 +262,7 @@ def analyse_from_document(
     company_name: str,
     region_id: str = "pakistan",
     peer_tickers: Optional[list] = None,
+    sector: str = "",
 ) -> FinancialAnalysis:
     """
     Full financial analysis from manually extracted financial data.
@@ -316,7 +318,7 @@ def analyse_from_document(
         result.leverage      = _compute_leverage(result.total_debt, result.shareholders_equity, result.ebitda, result.ebit, result.cash, g.get("interest_expense"))
         result.efficiency    = _compute_efficiency(result.revenue, result.total_assets, receivables, payables, inventory, result.gross_profit)
         result.growth        = _compute_growth(revenue_history, result.gross_profit, result.ebitda, None)
-        result.altman_z      = _compute_altman_z(current_assets, current_liabilities, result.total_assets, result.total_debt, result.shareholders_equity, result.revenue, result.ebit, result.cash, g.get("retained_earnings"))
+        result.altman_z      = _compute_altman_z(current_assets, current_liabilities, result.total_assets, result.total_debt, result.shareholders_equity, result.revenue, result.ebit, result.cash, g.get("retained_earnings"), is_bank=_is_bank(sector), net_income=result.net_income)
         result.dupont        = _compute_dupont(result.net_income, result.revenue, result.total_assets, result.shareholders_equity)
         result.working_capital = _compute_working_capital(current_assets, current_liabilities, result.revenue, revenue_history)
         result.dcf           = _compute_dcf(result.revenue, result.ebitda, None, result.growth.revenue_growth_yoy, result.total_debt, result.cash, region_id)
@@ -478,13 +480,55 @@ def _compute_growth(revenue_history: list, gross_profit, ebitda, income_stmt) ->
     return r
 
 
-def _compute_altman_z(current_assets, current_liabilities, total_assets, total_debt, equity, revenue, ebit, cash, retained_earnings=None) -> AltmanZScore:
+BANKING_SECTORS = {
+    "banks", "banking", "commercial banks", "investment banks",
+    "microfinance", "financial services", "modarabas", "leasing",
+}
+
+
+def _is_bank(sector: str) -> bool:
+    return any(b in (sector or "").lower() for b in BANKING_SECTORS)
+
+
+def _compute_altman_z(current_assets, current_liabilities, total_assets, total_debt, equity, revenue, ebit, cash, retained_earnings=None, is_bank=False, net_income=None) -> AltmanZScore:
     r = AltmanZScore()
 
     try:
+        # Banks report no "current assets/liabilities" and carry very different
+        # leverage, so the classic 5-factor Z is meaningless for them. Use the
+        # four-factor Altman Z''-Score (emerging-market / non-manufacturer variant).
+        if is_bank:
+            if not all(v is not None and total_assets and total_assets != 0 for v in
+                       [total_assets, ebit]):
+                r.interpretation = ("Z-Score unavailable: balance sheet data incomplete. "
+                                    "Upload annual report to enable.")
+                return r
+            wc = (current_assets - current_liabilities) if (
+                current_assets is not None and current_liabilities is not None) else 0
+            if retained_earnings is None:
+                retained_earnings = net_income if net_income is not None else 0
+            x1 = wc / total_assets
+            x2 = retained_earnings / total_assets
+            x3 = ebit / total_assets
+            x4 = (equity or 0) / (total_debt if total_debt and total_debt > 0 else 1)
+            r.z_score = round(6.56*x1 + 3.26*x2 + 6.72*x3 + 1.05*x4, 3)
+            r.components = {"X1": round(x1,3), "X2": round(x2,3), "X3": round(x3,3), "X4": round(x4,3)}
+            r.model = "Altman Z'' (bank/non-manufacturer)"
+            if r.z_score > 2.6:
+                r.zone = "SAFE"
+                r.interpretation = f"Z''-Score {r.z_score:.2f} — Safe zone (bank model). Low distress risk."
+            elif r.z_score > 1.1:
+                r.zone = "GREY"
+                r.interpretation = f"Z''-Score {r.z_score:.2f} — Grey zone (bank model). Monitor capital adequacy."
+            else:
+                r.zone = "DISTRESS"
+                r.interpretation = f"Z''-Score {r.z_score:.2f} — Distress zone (bank model). Elevated risk."
+            return r
+
         if not all(v is not None and total_assets and total_assets != 0 for v in
                    [current_assets, current_liabilities, total_assets, revenue, ebit]):
-            r.interpretation = "Insufficient data for Altman Z-Score"
+            r.interpretation = ("Z-Score unavailable: balance sheet data incomplete. "
+                                "Upload annual report to enable.")
             return r
 
         working_capital     = current_assets - current_liabilities
@@ -501,6 +545,7 @@ def _compute_altman_z(current_assets, current_liabilities, total_assets, total_d
 
         r.z_score = round(1.2*x1 + 1.4*x2 + 3.3*x3 + 0.6*x4 + 1.0*x5, 3)
         r.components = {"X1": round(x1,3), "X2": round(x2,3), "X3": round(x3,3), "X4": round(x4,3), "X5": round(x5,3)}
+        r.model = "Altman Z (standard)"
 
         if r.z_score > 2.99:
             r.zone = "SAFE"
@@ -939,7 +984,34 @@ def run_local_analysis_psx(ticker: str) -> dict:
     src = doc.get("_source", "psx_summary")
     ocr = bool(doc.get("_ocr"))
 
-    analysis = analyse_from_document(doc, company_name, region_id="pakistan")
+    # PSX statements are reported in PKR thousands — scale monetary fields to actual
+    # PKR so absolute outputs (DCF, revenue) are in the correct magnitude (billions,
+    # not millions). Ratios are unit-independent so this doesn't change them. The
+    # market-cap STUB is already in PKR millions, so it is not rescaled.
+    if not doc.get("_stub"):
+        _SCALE = 1_000
+        _MONEY = ("revenue", "gross_profit", "ebitda", "ebit", "net_income",
+                  "total_assets", "total_debt", "cash", "shareholders_equity",
+                  "current_assets", "current_liabilities", "inventory", "receivables",
+                  "payables", "ocf", "capex", "interest_expense", "depreciation",
+                  "retained_earnings", "revenue_prior_year", "revenue_2y_ago")
+        doc = {**doc, **{k: doc[k] * _SCALE for k in _MONEY
+                         if isinstance(doc.get(k), (int, float))}}
+
+    # Resolve the PSX sector so banks use the correct (four-factor) Altman model.
+    sector = ""
+    try:
+        from database.connection import get_db
+        row = get_db().execute(
+            "SELECT sector_name FROM psx_companies WHERE symbol=? LIMIT 1",
+            (ticker.strip().upper(),),
+        ).fetchone()
+        if row:
+            sector = row["sector_name"] or ""
+    except Exception:
+        pass
+
+    analysis = analyse_from_document(doc, company_name, region_id="pakistan", sector=sector)
     analysis.ticker      = ticker.strip().upper()
     analysis.currency    = "PKR"
     analysis.data_source = src
@@ -985,7 +1057,8 @@ def _assemble_report_dict(analysis: "FinancialAnalysis", region_id: str) -> dict
         "payables_days":      analysis.efficiency.payables_days,
     }
     result["region_id"]   = region_id
-    result["altman_zone"] = analysis.altman_z.zone
+    result["altman_zone"]  = analysis.altman_z.zone
+    result["altman_model"] = analysis.altman_z.model
     result["dupont"] = {
         "net_margin":      analysis.dupont.net_margin,
         "asset_turnover":  analysis.dupont.asset_turnover,

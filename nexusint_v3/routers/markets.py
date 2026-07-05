@@ -434,7 +434,9 @@ async def analyse_local(
         f' id="watch-btn-{ticker}">☆ Add to Watchlist</button>'
     )
 
-    ai_link = f'/intelligence?business={result.get("company","").replace(" ", "+")}&region={region}'
+    from urllib.parse import quote_plus as _qp
+    ai_link = (f'/intelligence?business={_qp(result.get("company","") or ticker)}'
+               f'&ticker={_qp(ticker)}&region={_qp(region)}')
 
     errors_html = ""
     if result.get("errors"):

@@ -122,7 +122,7 @@ async def client_peek(request: Request, client_id: str):
     # Last completed run
     last_run = db.execute(
         """
-        SELECT run_id, business_name, region_id, started_at, completed_at,
+        SELECT run_id, business_name, started_at, completed_at,
                modules_complete, modules_failed, modules_requested,
                analysis_summary, data_summary
         FROM analysis_runs

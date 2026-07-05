@@ -243,7 +243,28 @@
     {% if run_state.modules_failed %}
     · {{ run_state.modules_failed|length }} failed
     {% endif %}
+    {% if run_state.modules_running %}
+    · <span style="color:var(--warning)">now: {{ (all_modules[run_state.modules_running[0]].label if all_modules.get(run_state.modules_running[0]) else run_state.modules_running[0]) }}</span>
+    {% endif %}
   </div>
+
+  <!-- Per-module progress checklist -->
+  {% if run_state.modules_requested %}
+  <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:6px">
+    {% for mid in run_state.modules_requested %}
+      {% set label = (all_modules[mid].label if all_modules.get(mid) else mid) %}
+      {% if mid in run_state.modules_complete %}
+        <span style="font-size:0.72em; padding:2px 8px; border-radius:10px; background:rgba(74,222,128,0.12); color:#4ade80; border:1px solid rgba(74,222,128,0.3)">✓ {{ label }}</span>
+      {% elif mid in run_state.modules_running %}
+        <span style="font-size:0.72em; padding:2px 8px; border-radius:10px; background:rgba(250,204,21,0.15); color:#facc15; border:1px solid rgba(250,204,21,0.4)"><span class="spinner" style="width:8px;height:8px"></span> {{ label }}</span>
+      {% elif mid in run_state.modules_failed %}
+        <span style="font-size:0.72em; padding:2px 8px; border-radius:10px; background:rgba(248,113,113,0.12); color:#f87171; border:1px solid rgba(248,113,113,0.3)">✗ {{ label }}</span>
+      {% else %}
+        <span style="font-size:0.72em; padding:2px 8px; border-radius:10px; background:var(--bg-3); color:var(--text-dim); border:1px solid var(--border)">· {{ label }}</span>
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
 
   <!-- Stuck-run warning (>60 min in non-terminal state) -->
   {% if run_state.elapsed_minutes is defined and run_state.elapsed_minutes > 60 %}

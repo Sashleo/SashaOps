@@ -71,19 +71,29 @@ def _derive_client_key(client_id: str) -> Optional[bytes]:
 
 @router.get("", response_class=HTMLResponse)
 @router.get("/", response_class=HTMLResponse)
-async def intelligence_page(request: Request, run_id: Optional[str] = None):
+async def intelligence_page(
+    request: Request,
+    run_id: Optional[str] = None,
+    business: Optional[str] = None,
+    ticker: Optional[str] = None,
+    region: Optional[str] = None,
+):
     require_session(request)
     sidebar = _sidebar(request)
     active_client = sidebar["active_client"]
 
     run_state = None
     analysis_results = {}
-    last_business = ""
+    # Prefill the business field when arriving from the Markets "Get Full BI Analysis"
+    # link (/intelligence?business=...&ticker=...&region=...).
+    last_business = (business or "").strip()
     run_mode = "gated"
 
+    # Only auto-load an existing run when we're NOT arriving with a prefill request,
+    # so the deep-link lands on a ready-to-run form for that company.
     if active_client and run_id:
         run_state = load_run(run_id)
-    elif active_client:
+    elif active_client and not last_business:
         run_state = load_latest_active_run(active_client["id"])
 
     modules_by_group = get_modules_by_group()

@@ -97,7 +97,7 @@ async def run_stage1(run_id, client_id, business_name, region_id, module_list,
             def _fetch_feeds():
                 return fetch_feeds_for_region(region_id)
             _fetch_feeds.__name__ = "fetch_feeds"
-            feed_result = await _bounded(_fetch_feeds, timeout_s=90)
+            feed_result = await _bounded(_fetch_feeds, timeout_s=60)  # bounds cold Stage 1
             if feed_result is None:
                 from intelligence.feeds import FeedResult
                 feed_result = FeedResult()

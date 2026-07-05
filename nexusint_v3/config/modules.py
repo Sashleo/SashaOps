@@ -118,37 +118,6 @@ MODULES: dict[str, Module] = {
         ),
     ),
 
-    "marketing": Module(
-        id="marketing",
-        icon="📣",
-        label="Marketing",
-        group="Strategy",
-        color="#f472b6",
-        description="CMO-level strategy: channels, content, paid media, 90-day plan",
-        system_prompt=(
-            "You are a world-class CMO and growth strategist. "
-            "You understand digital marketing, brand strategy, content marketing, "
-            "paid media, influencer marketing, community building, SEO, "
-            "and viral growth mechanics adapted to specific markets and cultures. "
-            "Name specific platforms, influencer categories, and tactical moves. "
-            "All recommendations must be specific to the business type and target market."
-        ),
-        prompt_builder=lambda b, c, m: (
-            f'Full marketing strategy for "{b}"{f" targeting {c}" if c else ""}.\n\n'
-            f'Search their current marketing presence and industry landscape.\n\n'
-            f'Deliver:\n'
-            f'1. **Brand Positioning** — where they should sit vs competitors\n'
-            f'2. **Top 5 Channels** — highest-ROI channels for their specific audience\n'
-            f'3. **Content Strategy** — specific content types, topics, and formats\n'
-            f'4. **Paid Media Framework** — budget allocation across channels\n'
-            f'5. **Influencer/Partnership Opportunities** — name real ones\n'
-            f'6. **SEO/Digital Gaps** — what they are missing online\n'
-            f'7. **90-Day Quick-Win Plan** — specific actions, week by week\n\n'
-            + (f'Tailor all recommendations to {c} culture, platforms, and consumer behaviour.\n\n' if c else '')
-            + m
-        ),
-    ),
-
     "financial": Module(
         id="financial",
         icon="💹",
@@ -211,34 +180,6 @@ MODULES: dict[str, Module] = {
             f'4. **Cultural Business Norms** — relationship vs transactional, negotiation style\n'
             f'5. **Political Risk** — stability, currency risk, regulatory predictability\n'
             f'6. **Recent Developments** — what has changed in the last 12 months\n\n'
-            f'{m}'
-        ),
-    ),
-
-    "supplychain": Module(
-        id="supplychain",
-        icon="🔗",
-        label="Supply Chain",
-        group="Operations",
-        color="#fb923c",
-        description="Supply chain map, risks, 3PLs, expansion blueprint",
-        system_prompt=(
-            "You are a global supply chain strategist. "
-            "You know logistics, manufacturing, procurement, 3PL/4PL providers, "
-            "Incoterms, customs and tariffs, demand forecasting, and supply chain risk. "
-            "Name real suppliers, logistics providers, and routes. "
-            "Think about single-source risk, lead times, and working capital in inventory."
-        ),
-        prompt_builder=lambda b, c, m: (
-            f'Supply chain intelligence for "{b}"{f" with focus on {c}" if c else ""}.\n\n'
-            f'Deliver:\n'
-            f'1. **Supply Chain Map** — key dependencies and single-source risks\n'
-            f'2. **Supplier Diversification** — specific alternative regions and suppliers\n'
-            f'3. **Logistics Optimisation** — carriers, routes, Incoterms, customs exposure\n'
-            f'4. **Inventory Strategy** — safety stock, reorder points, demand volatility\n'
-            f'5. **Expansion Blueprint** — supply chain setup for top 2 growth markets\n'
-            f'6. **Risk Mitigation** — geopolitical, climate, chokepoint exposure\n'
-            f'7. **Technology Stack** — recommended tools for their scale\n\n'
             f'{m}'
         ),
     ),

@@ -57,6 +57,12 @@ def _psx_entities() -> dict[str, dict]:
         log.info("news_relevance: psx_companies unavailable", error=str(e)[:80])
         return out
 
+    # Curated market aliases the DB company_name often omits (OGDCL, HUBCO, KE…).
+    try:
+        from config.pak_entities import PAK_TICKERS
+    except Exception:
+        PAK_TICKERS = {}
+
     for r in rows:
         sym = (r["symbol"] or "").strip().upper()
         if not sym:
@@ -75,6 +81,10 @@ def _psx_entities() -> dict[str, dict]:
                 first = stripped.split(" ")[0]
                 if len(first) >= 5:
                     variants.add(first)
+        for alias in PAK_TICKERS.get(sym, []):
+            a = alias.lower().strip()
+            if len(a) >= 2:
+                variants.add(a)
         out[sym] = {"name": name, "sector": (r["sector_name"] or "").strip(), "variants": variants}
     log.info("news_relevance: entity dictionary built", companies=len(out))
     return out

@@ -296,7 +296,22 @@ def get_macro_summary_text(industry: Optional[str] = None) -> str:
             unit = row.get(unit_key) or ""
             lines.append(f"  {label}: {row[key]:g} {unit}".rstrip())
 
-    _add("SBP Policy Rate", get_sbp_indicator("policy_rate"))
+    # SBP policy rate with trend + next MPC meeting (MPC-calendar-aware scraper).
+    try:
+        from intelligence.gov_scrapers.sbp_monetary import get_rate_status
+        st = get_rate_status()
+        if st.get("rate") is not None:
+            extra = []
+            if st.get("trend") and st["trend"] != "hold":
+                extra.append(st["trend"])
+            if st.get("next_mpc"):
+                extra.append(f"next MPC {st['next_mpc']}")
+            suffix = f" ({', '.join(extra)})" if extra else ""
+            lines.append(f"  SBP Policy Rate: {st['rate']:g} %{suffix}")
+        else:
+            _add("SBP Policy Rate", get_sbp_indicator("policy_rate"))
+    except Exception:
+        _add("SBP Policy Rate", get_sbp_indicator("policy_rate"))
     _add("CPI Inflation",   get_sbp_indicator("cpi"))
     _add("FX Reserves",     get_sbp_indicator("forex_reserves"))
 

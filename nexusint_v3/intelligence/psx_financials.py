@@ -201,9 +201,15 @@ def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
 
     # ── Fast path: a recent, revenue-bearing annual row means we can skip the slow
     # live scrape + PDF/OCR entirely (accuracy preserved — same persisted figures).
+    # Prefer real year periods with balance-sheet data; never serve a 'latest' stub.
     try:
-        for row in get_cached_financials(ticker):
-            if row.get("revenue") and _is_fresh(row.get("fetched_at")):
+        cached = [r for r in get_cached_financials(ticker)
+                  if r.get("revenue") and _is_fresh(r.get("fetched_at"))
+                  and str(r.get("period", "")).strip().lower() != "latest"]
+        # Best row = has balance sheet first, then most recent year.
+        cached.sort(key=lambda r: (r.get("total_assets") is not None, _year_of(r.get("period"))),
+                    reverse=True)
+        for row in cached[:1]:
                 doc = _row_to_doc(row)
                 doc["_source"] = "psx_financials_cache"
                 name = ticker
@@ -297,26 +303,62 @@ def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
                     return s[0]
         return None
 
-    # ── Deepen with the annual-report PDF when it parses a complete statement ──
+    # ── Deepen with the annual-report PDF ────────────────────────────────────
     # The PSX summary lacks balance-sheet items (assets, equity, debt, current
-    # assets/liabilities) needed for liquidity, leverage, Altman Z and ROE. The
-    # annual report has them. To avoid mixing unit conventions (PKR '000 vs mn)
-    # across two sources, we adopt the report WHOLESALE only when it parses a
-    # complete, internally-consistent set (revenue + net income + total assets).
-    # Otherwise the clean summary stands (margins / health / DCF still compute).
+    # assets/liabilities) needed for liquidity, leverage, Altman Z and ROE — the
+    # annual report has them. Two adoption paths:
+    #   • WHOLESALE: report is a complete, internally-consistent statement → use it.
+    #   • MERGE: report is partial but its revenue matches the summary's order of
+    #     magnitude (same unit convention) → fill only the balance-sheet fields the
+    #     summary is missing. This is what lets ROE / current ratio / Altman compute
+    #     for companies whose report doesn't parse into a "complete" statement.
     source = "psx_summary"
-    summary_fy = doc.get("_fiscal_year")   # preserve FY if the report path replaces doc
+    summary_fy = doc.get("_fiscal_year")
+    _BS_FIELDS = ("total_assets", "shareholders_equity", "total_debt", "cash",
+                  "current_assets", "current_liabilities", "inventory", "receivables",
+                  "payables", "retained_earnings", "ebit", "interest_expense",
+                  "depreciation", "gross_profit")
     try:
         from intelligence.psx_report_parser import fetch_psx_report_financials
         report = fetch_psx_report_financials(ticker)
-        if report and _report_is_sane(report):
-            # EBITDA from operating profit + depreciation when not stated directly.
+        if report:
             if "ebitda" not in report and report.get("ebit") and report.get("depreciation"):
                 report["ebitda"] = report["ebit"] + report["depreciation"]
-            if not report.get("_fiscal_year") and summary_fy:
-                report["_fiscal_year"] = summary_fy
-            doc = report
-            source = "psx_annual_report_ocr" if report.get("_ocr") else "psx_annual_report"
+
+            if _report_is_sane(report):
+                # Complete statement — adopt wholesale.
+                if not report.get("_fiscal_year") and summary_fy:
+                    report["_fiscal_year"] = summary_fy
+                doc = report
+                source = "psx_annual_report_ocr" if report.get("_ocr") else "psx_annual_report"
+            else:
+                # Partial report — merge balance-sheet fields if units are consistent
+                # with the summary (report revenue within 0.5×–2× of summary revenue).
+                # Unit-align the report to the summary. PSX summary is in PKR '000;
+                # annual reports may be in '000 or actual PKR. Infer the scale from
+                # the revenue ratio and snap to the nearest power of 1000.
+                s_rev = doc.get("revenue")
+                r_rev_chk = report.get("revenue")
+                scale, units_ok = 1.0, True
+                if s_rev and r_rev_chk:
+                    ratio = r_rev_chk / s_rev
+                    if   0.5   <= ratio <= 2.0:    scale = 1.0
+                    elif 500   <= ratio <= 2000:   scale = 1.0 / 1000    # report in actual PKR
+                    elif 0.0005 <= ratio <= 0.002: scale = 1000.0        # report in PKR millions
+                    else:                          units_ok = False      # can't reconcile
+                # Fire whenever the report contributed ANY balance-sheet field the
+                # summary lacks (total_assets ideal but not required — filling
+                # inventory/receivables/payables still improves efficiency/leverage).
+                if units_ok and any(report.get(k) is not None for k in _BS_FIELDS):
+                    filled = []
+                    for k in _BS_FIELDS:
+                        if doc.get(k) is None and report.get(k) is not None:
+                            doc[k] = report[k] * scale
+                            filled.append(k)
+                    if filled:
+                        source = "psx_summary+report_bs" + ("_ocr" if report.get("_ocr") else "")
+                        log.info("Merged balance-sheet fields from annual report",
+                                 ticker=ticker, fields=filled, scale=scale)
     except Exception as e:
         log.info("PSX report enrichment skipped", ticker=ticker, error=str(e)[:80])
 
@@ -337,19 +379,22 @@ def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
     except Exception:
         pass
 
-    # Persist the parsed statement so psx_financials builds a history.
-    try:
-        period = doc.get("_fiscal_year") or "latest"
-        if period == "latest":
-            rev_map = (data.get("annual_financials") or {})
-            for metric, vm in rev_map.items():
-                if _norm(metric).startswith(("net sales", "revenue", "sales")):
-                    yrs = [p for p, v in vm.items() if isinstance(v, (int, float))]
-                    if yrs:
-                        period = str(sorted(yrs, key=_year_of, reverse=True)[0])
-                    break
-        upsert_psx_financials(ticker, period, "annual", doc, raw=ratios)
-    except Exception as e:
-        log.info("PSX financials persist skipped", ticker=ticker, error=str(e)[:80])
+    # Persist the parsed statement so psx_financials builds a history. Skip the
+    # market-cap STUB — it has no real statement figures and (period='latest') would
+    # otherwise sort ahead of and shadow the real annual row.
+    if not doc.get("_stub"):
+        try:
+            period = doc.get("_fiscal_year") or "latest"
+            if period == "latest":
+                rev_map = (data.get("annual_financials") or {})
+                for metric, vm in rev_map.items():
+                    if _norm(metric).startswith(("net sales", "revenue", "sales")):
+                        yrs = [p for p, v in vm.items() if isinstance(v, (int, float))]
+                        if yrs:
+                            period = str(sorted(yrs, key=_year_of, reverse=True)[0])
+                        break
+            upsert_psx_financials(ticker, period, "annual", doc, raw=ratios)
+        except Exception as e:
+            log.info("PSX financials persist skipped", ticker=ticker, error=str(e)[:80])
 
     return doc, name

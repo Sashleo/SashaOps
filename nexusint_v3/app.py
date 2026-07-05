@@ -87,6 +87,8 @@ def create_app() -> FastAPI:
     app.include_router(memory.router,           prefix="/memory",   tags=["memory"])
     app.include_router(settings_router.router,  prefix="/settings", tags=["settings"])
     app.include_router(debug_router.router,     prefix="/debug/sanitise", tags=["debug"])
+    # Second mount so verification endpoints resolve at /debug/* (e.g. /debug/scrapers).
+    app.include_router(debug_router.router,     prefix="/debug",          tags=["debug"])
 
     # ── Health check ──────────────────────────────────────────────────────────
     @app.get("/health")
