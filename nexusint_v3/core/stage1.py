@@ -304,7 +304,9 @@ async def run_stage1(run_id, client_id, business_name, region_id, module_list,
                     timeout_s=30,
                 ) or ("", [])
                 if doc_text:
-                    summary.document_text       = doc_text
+                    # M4 — scrub any embedded prompt-injection lines from extracted text.
+                    from core.sanitiser import strip_prompt_injection
+                    summary.document_text       = strip_prompt_injection(doc_text)
                     summary.document_names      = doc_names
                     summary.documents_available = len(doc_names)
                     summary.sources_found.append(f"documents:{len(doc_names)}")

@@ -229,6 +229,9 @@ class FinancialAnalysis:
     three_statement: ThreeStatementModel = field(default_factory=ThreeStatementModel)
     # Summary
     financial_health_score: Optional[float] = None   # 1-10
+    health_confidence: float = 0.0                    # 0-1: fraction of metric weight available
+    health_basis: list = field(default_factory=list)  # metric categories that contributed
+    health_missing: list = field(default_factory=list) # categories with no usable metric
     key_risks: list = field(default_factory=list)
     key_strengths: list = field(default_factory=list)
     errors: list = field(default_factory=list)
@@ -321,13 +324,20 @@ def analyse_from_document(
         result.altman_z      = _compute_altman_z(current_assets, current_liabilities, result.total_assets, result.total_debt, result.shareholders_equity, result.revenue, result.ebit, result.cash, g.get("retained_earnings"), is_bank=_is_bank(sector), net_income=result.net_income)
         result.dupont        = _compute_dupont(result.net_income, result.revenue, result.total_assets, result.shareholders_equity)
         result.working_capital = _compute_working_capital(current_assets, current_liabilities, result.revenue, revenue_history)
-        result.dcf           = _compute_dcf(result.revenue, result.ebitda, None, result.growth.revenue_growth_yoy, result.total_debt, result.cash, region_id)
+        # M8 — enterprise FCFF DCF is not meaningful for financial institutions.
+        # Banks are valued on multiples (P/B, P/E) instead (assembled downstream).
+        if not _is_bank(sector):
+            result.dcf       = _compute_dcf(result.revenue, result.ebitda, None, result.growth.revenue_growth_yoy, result.total_debt, result.cash, region_id)
         result.three_statement = _build_three_statement_model(result.revenue, result.profitability.gross_margin, result.profitability.ebitda_margin, result.profitability.net_margin, result.growth.revenue_growth_yoy, capex)
 
         if peer_tickers:
             result.comps = _compute_comparables(peer_tickers, result.revenue, result.ebitda)
 
-        result.financial_health_score = _compute_health_score(result)
+        _health = _compute_health_score(result, is_bank=_is_bank(sector), is_stub=bool(g.get("_stub")))
+        result.financial_health_score = _health["score"]
+        result.health_confidence      = _health["confidence"]
+        result.health_basis           = _health["basis"]
+        result.health_missing         = _health["missing"]
         result.key_risks, result.key_strengths = _identify_risks_strengths(result)
 
     except Exception as e:
@@ -808,47 +818,83 @@ def _build_three_statement_model(revenue, gross_margin, ebitda_margin, net_margi
     return r
 
 
-def _compute_health_score(analysis: FinancialAnalysis) -> float:
-    """Compute an overall financial health score 1-10."""
-    score = 5.0  # Start neutral
+def _compute_health_score(analysis: FinancialAnalysis, is_bank: bool = False,
+                          is_stub: bool = False) -> dict:
+    """
+    Confidence-weighted health score. Only metrics passing plausibility validation
+    (intelligence/validation.py) contribute. Category weights sum to 7.0 —
+    liquidity 1.5, profitability 2.0, leverage 1.5, growth 1.0, altman 1.0.
 
-    # Liquidity (+/- up to 1.5)
-    cr = analysis.liquidity.current_ratio
-    if cr:
+    Returns {score, confidence, basis, missing}. confidence = contributing / 7.0.
+    Stub-sourced data (approximated from market cap) caps confidence at 0.3.
+    """
+    from intelligence.validation import validate_metric
+
+    score = 5.0
+    contributing = 0.0
+    basis: list = []
+    missing: list = []
+
+    # Liquidity (1.5) — banks don't report current assets/liabilities, so N/A there.
+    cr = None if is_bank else validate_metric("current_ratio", analysis.liquidity.current_ratio, is_bank)["value"]
+    if cr is not None:
+        contributing += 1.5; basis.append("liquidity")
         if cr >= 2.0:   score += 1.5
         elif cr >= 1.5: score += 0.75
-        elif cr >= 1.0: score += 0.0
         elif cr < 1.0:  score -= 1.5
+    else:
+        missing.append("liquidity")
 
-    # Profitability (+/- up to 2.0)
-    nm = analysis.profitability.net_margin
-    if nm:
-        if nm >= 0.15:  score += 2.0
+    # Profitability (2.0) — net margin.
+    nm = validate_metric("net_margin", analysis.profitability.net_margin, is_bank)["value"]
+    if nm is not None:
+        contributing += 2.0; basis.append("profitability")
+        if nm >= 0.15:   score += 2.0
         elif nm >= 0.08: score += 1.0
-        elif nm >= 0.03: score += 0.0
-        elif nm < 0:    score -= 2.0
+        elif nm < 0:     score -= 2.0
+    else:
+        missing.append("profitability")
 
-    # Leverage (+/- up to 1.5)
-    de = analysis.leverage.debt_to_ebitda
-    if de:
-        if de <= 1.0:   score += 1.5
-        elif de <= 3.0: score += 0.5
-        elif de <= 5.0: score -= 0.5
-        elif de > 5.0:  score -= 1.5
+    # Leverage (1.5) — net debt/EBITDA (skip for banks; not meaningful).
+    de = None if is_bank else validate_metric("debt_to_equity", analysis.leverage.debt_to_equity, is_bank)["value"]
+    dte = analysis.leverage.debt_to_ebitda
+    if not is_bank and dte is not None:
+        contributing += 1.5; basis.append("leverage")
+        if dte <= 1.0:   score += 1.5
+        elif dte <= 3.0: score += 0.5
+        elif dte <= 5.0: score -= 0.5
+        else:            score -= 1.5
+    else:
+        missing.append("leverage")
 
-    # Growth (+/- up to 1.0)
-    g = analysis.growth.revenue_growth_yoy
-    if g:
+    # Growth (1.0).
+    g = validate_metric("revenue_growth", analysis.growth.revenue_growth_yoy, is_bank)["value"]
+    if g is not None:
+        contributing += 1.0; basis.append("growth")
         if g >= 0.20:   score += 1.0
         elif g >= 0.05: score += 0.5
         elif g < 0:     score -= 1.0
+    else:
+        missing.append("growth")
 
-    # Altman Z (+/- up to 1.0)
-    if analysis.altman_z.zone == "SAFE":      score += 1.0
-    elif analysis.altman_z.zone == "GREY":    score += 0.0
-    elif analysis.altman_z.zone == "DISTRESS": score -= 1.0
+    # Altman zone (1.0).
+    if analysis.altman_z.zone in ("SAFE", "GREY", "DISTRESS"):
+        contributing += 1.0; basis.append("altman")
+        if analysis.altman_z.zone == "SAFE":       score += 1.0
+        elif analysis.altman_z.zone == "DISTRESS": score -= 1.0
+    else:
+        missing.append("altman")
 
-    return round(max(1.0, min(10.0, score)), 1)
+    confidence = round(contributing / 7.0, 2)
+    if is_stub:
+        confidence = min(confidence, 0.3)
+
+    return {
+        "score":      round(max(1.0, min(10.0, score)), 1),
+        "confidence": confidence,
+        "basis":      basis,
+        "missing":    missing,
+    }
 
 
 def _identify_risks_strengths(analysis: FinancialAnalysis) -> tuple[list, list]:
@@ -1021,18 +1067,43 @@ def run_local_analysis_psx(ticker: str) -> dict:
     if analysis.errors and not analysis.revenue:
         raise ValueError(analysis.errors[0])
 
-    result = _assemble_report_dict(analysis, "pakistan")
+    result = _assemble_report_dict(analysis, "pakistan", is_bank=_is_bank(sector))
     result["source"]      = src
     result["ocr_derived"] = ocr
+
+    # M8 — bank valuation via multiples (P/B, P/E) from market cap + equity + net income.
+    if _is_bank(sector):
+        try:
+            from database.connection import get_db
+            row = get_db().execute(
+                "SELECT market_cap FROM psx_companies WHERE symbol=? LIMIT 1",
+                (ticker.strip().upper(),),
+            ).fetchone()
+            mcap = float(row["market_cap"]) if (row and row["market_cap"]) else None  # PKR mn
+            eq   = analysis.shareholders_equity   # PKR (scaled)
+            ni   = analysis.net_income
+            eq_mn = (eq / 1_000_000) if eq else None
+            ni_mn = (ni / 1_000_000) if ni else None
+            pb = (mcap / eq_mn) if (mcap and eq_mn) else None
+            pe = (mcap / ni_mn) if (mcap and ni_mn and ni_mn > 0) else None
+            result["bank_multiples"] = {"market_cap_mn": mcap, "pb": pb, "pe": pe}
+        except Exception:
+            result["bank_multiples"] = {}
     return result
 
 
-def _assemble_report_dict(analysis: "FinancialAnalysis", region_id: str) -> dict:
-    """Build the flat, template-/JSON-friendly dict from a FinancialAnalysis."""
+def _assemble_report_dict(analysis: "FinancialAnalysis", region_id: str, is_bank: bool = False) -> dict:
+    """Build the flat, template-/JSON-friendly dict from a FinancialAnalysis.
+
+    Every ratio is passed through the plausibility validator (M7): an implausible
+    value (parse/unit error) is nulled here so it never displays as a number and
+    never feeds verdicts. The set of excluded metrics is returned in `_excluded`.
+    """
+    from intelligence.validation import validate_metric
+
     result = to_report_dict(analysis)
 
-    # Add raw float versions for colour-coding in templates
-    result["_raw"] = {
+    _raw_metrics = {
         "gross_margin":       analysis.profitability.gross_margin,
         "ebitda_margin":      analysis.profitability.ebitda_margin,
         "net_margin":         analysis.profitability.net_margin,
@@ -1041,21 +1112,57 @@ def _assemble_report_dict(analysis: "FinancialAnalysis", region_id: str) -> dict
         "current_ratio":      analysis.liquidity.current_ratio,
         "quick_ratio":        analysis.liquidity.quick_ratio,
         "debt_to_equity":     analysis.leverage.debt_to_equity,
-        "debt_to_ebitda":     analysis.leverage.debt_to_ebitda,
         "interest_coverage":  analysis.leverage.interest_coverage,
-        "revenue_growth_yoy": analysis.growth.revenue_growth_yoy,
+        "revenue_growth":     analysis.growth.revenue_growth_yoy,
         "altman_z":           analysis.altman_z.z_score,
+        "asset_turnover":     analysis.efficiency.asset_turnover,
+        "wacc":               analysis.dcf.wacc,
+    }
+    excluded: list = []
+    validated: dict = {}
+    for name, val in _raw_metrics.items():
+        vr = validate_metric(name, val, is_bank)
+        validated[name] = vr["value"]
+        if vr["status"] == "implausible":
+            excluded.append(name)
+
+    # Add raw float versions for colour-coding in templates (validated: implausible → None)
+    result["_raw"] = {
+        "gross_margin":       validated["gross_margin"],
+        "ebitda_margin":      _raw_metrics["ebitda_margin"],
+        "net_margin":         validated["net_margin"],
+        "roe":                validated["roe"],
+        "roa":                validated["roa"],
+        "current_ratio":      validated["current_ratio"],
+        "quick_ratio":        validated["quick_ratio"],
+        "debt_to_equity":     validated["debt_to_equity"],
+        "debt_to_ebitda":     analysis.leverage.debt_to_ebitda,
+        "interest_coverage":  validated["interest_coverage"],
+        "revenue_growth_yoy": validated["revenue_growth"],
+        "altman_z":           validated["altman_z"],
         "altman_components":  analysis.altman_z.components or {},
         "health_score":       analysis.financial_health_score,
         "dcf_base":           analysis.dcf.base_value,
         "dcf_bear":           analysis.dcf.bear_value,
         "dcf_bull":           analysis.dcf.bull_value,
-        "wacc":               analysis.dcf.wacc,
-        "asset_turnover":     analysis.efficiency.asset_turnover,
+        "wacc":               validated["wacc"],
+        "asset_turnover":     validated["asset_turnover"],
         "ccc_days":           analysis.efficiency.cash_conversion_cycle,
         "receivables_days":   analysis.efficiency.receivables_days,
         "payables_days":      analysis.efficiency.payables_days,
     }
+    result["_excluded"] = excluded
+    # Also overwrite the human-readable display fields for excluded metrics so an
+    # implausible number never prints (verification: HBL shows no implausible ratio).
+    _EXCLUDE_MARK = "data error suspected — excluded"
+    for name in excluded:
+        if name in result:                       # gross_margin, net_margin, roe, ...
+            result[name] = _EXCLUDE_MARK
+    # Health confidence (M6) — surfaced so displays can qualify the score.
+    result["health_confidence"] = analysis.health_confidence
+    result["health_basis"]      = analysis.health_basis
+    result["health_missing"]    = analysis.health_missing
+    result["is_bank"]           = is_bank
     result["region_id"]   = region_id
     result["altman_zone"]  = analysis.altman_z.zone
     result["altman_model"] = analysis.altman_z.model
@@ -1167,24 +1274,40 @@ def score_announcements_sentiment(ticker: str, n: int = 10) -> Optional[dict]:
         headlines = [r["title"] for r in rows if r["title"]]
         if not headlines:
             return None
-        from ml.sentiment import score as _finbert
-        scores = _finbert(headlines)
-        if not scores:
-            return None
-        counts: dict[str, int] = {"Positive": 0, "Neutral": 0, "Negative": 0}
-        for s in scores:
-            counts[s.label.capitalize()] = counts.get(s.label.capitalize(), 0) + 1
-        total = len(scores)
-        return {
-            "positive": counts["Positive"] / total,
-            "neutral":  counts["Neutral"]  / total,
-            "negative": counts["Negative"] / total,
-            "top":      headlines[:3],
-            "n":        total,
-        }
+        # M10 — classify announcements by TYPE (keyword), not FinBERT. Procedural
+        # filings dominate PSX announcements and FinBERT scores them a meaningless
+        # 100% neutral; a type breakdown is far more informative.
+        from intelligence.announcement_classifier import classify_announcements
+        breakdown = classify_announcements(headlines)
+        breakdown["top"] = headlines[:3]
+        breakdown["kind"] = "announcement_types"
+        return breakdown
     except Exception as _e:
         log.debug("score_announcements_sentiment failed", error=str(_e))
         return None
+
+
+def format_health_score(analysis_dict: dict) -> str:
+    """
+    M6 display rule — never render a bare score. Qualify by confidence:
+      >= 0.7 : "Health Score: X/10 (high confidence)"
+      0.4-0.7: "Provisional Score: X/10 — N of M metrics; missing: [...]"
+      < 0.4  : "Score withheld — insufficient data. Required: [...]"
+    """
+    raw   = analysis_dict.get("_raw", {})
+    score = raw.get("health_score")
+    conf  = analysis_dict.get("health_confidence", 0.0) or 0.0
+    basis = analysis_dict.get("health_basis", []) or []
+    missing = analysis_dict.get("health_missing", []) or []
+    total = len(basis) + len(missing)
+    if score is None or conf < 0.4:
+        req = ", ".join(missing) or "balance sheet + income statement data"
+        return f"**Score withheld — insufficient data.** _Required: {req}._"
+    if conf >= 0.7:
+        return f"**Health Score: {score:.1f}/10 (high confidence)**"
+    miss = (", missing: " + ", ".join(missing)) if missing else ""
+    return (f"**Provisional Score: {score:.1f}/10** — {len(basis)} of {total} metric "
+            f"groups{miss}.")
 
 
 def generate_local_financial_report(
@@ -1231,8 +1354,8 @@ def generate_local_financial_report(
         f"## Financial Health Analysis — {company} ({ticker}, FY {fy})",
         f"_Source: PSX financial statements · Computed locally · Currency: {currency}_",
         "",
-        f"**Health Score: {_n(health, 1)}/10 ({health_label})"
-        f"  ·  Altman Z-Score: {_n(altman_z, 2)} ({altman_zone})**",
+        f"{format_health_score(analysis_dict)}"
+        f"  ·  Altman Z-Score: {_n(altman_z, 2)} ({altman_zone})",
         "",
     ]
 
@@ -1341,22 +1464,45 @@ def generate_local_financial_report(
             "",
         ]
 
-    # ── DCF scenarios ─────────────────────────────────────────────────────────
-    dcf_note = analysis_dict.get("dcf_note", "")
-    if any(analysis_dict.get(k) not in (None, "N/A") for k in ("dcf_base", "dcf_bear", "dcf_bull")):
+    # ── Valuation ─────────────────────────────────────────────────────────────
+    if analysis_dict.get("is_bank"):
+        # M8 — banks: multiples, never FCFF DCF / EV-Revenue.
+        bm = analysis_dict.get("bank_multiples", {}) or {}
+        pb = bm.get("pb"); pe = bm.get("pe")
+        pe_med = None
+        try:
+            from intelligence.sector_medians import get_sector_median
+            m = get_sector_median("banking", "pe")
+            pe_med = m["median"] if m else None
+        except Exception:
+            pe_med = None
         lines += [
-            "### DCF Valuation Scenarios",
-            f"**WACC: {_pct(raw.get('wacc'))}**",
+            "### Bank Valuation (multiples)",
+            "_Enterprise DCF is not applied to financial institutions; banks are valued on "
+            "book-value and earnings multiples._",
             "",
-            "| Scenario | Equity Value |",
-            "|----------|-------------|",
-            f"| Bear | {analysis_dict.get('dcf_bear', 'N/A')} {currency} |",
-            f"| Base | {analysis_dict.get('dcf_base', 'N/A')} {currency} |",
-            f"| Bull | {analysis_dict.get('dcf_bull', 'N/A')} {currency} |",
+            "| Multiple | Value | Banking-sector median |",
+            "|----------|-------|-----------------------|",
+            f"| P/B | {_x(pb) if pb else 'N/A'} | — |",
+            f"| P/E | {_x(pe) if pe else 'N/A'} | {_x(pe_med) if pe_med else 'insufficient peers'} |",
+            "",
         ]
-        if dcf_note:
-            lines.append(f"_{dcf_note[:220]}_")
-        lines.append("")
+    else:
+        dcf_note = analysis_dict.get("dcf_note", "")
+        if any(analysis_dict.get(k) not in (None, "N/A") for k in ("dcf_base", "dcf_bear", "dcf_bull")):
+            lines += [
+                "### DCF Valuation Scenarios",
+                f"**WACC: {_pct(raw.get('wacc'))}**",
+                "",
+                "| Scenario | Equity Value |",
+                "|----------|-------------|",
+                f"| Bear | {analysis_dict.get('dcf_bear', 'N/A')} {currency} |",
+                f"| Base | {analysis_dict.get('dcf_base', 'N/A')} {currency} |",
+                f"| Bull | {analysis_dict.get('dcf_bull', 'N/A')} {currency} |",
+            ]
+            if dcf_note:
+                lines.append(f"_{dcf_note[:220]}_")
+            lines.append("")
 
     # ── 3-year revenue projections ────────────────────────────────────────────
     rev_y1, rev_y2, rev_y3 = (

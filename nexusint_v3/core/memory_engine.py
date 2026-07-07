@@ -43,14 +43,24 @@ def extract_and_store(
     client_name: str,
     client_key: bytes,
     industry_tag: Optional[str] = None,
+    sanitiser=None,
 ) -> int:
     """
     Extract insights from an analysis result and store in memory.
     Called automatically after every analysis completes.
 
+    SECURITY: insight extraction sends text to Gemini. The run's sanitiser MUST be
+    threaded through so Class-S data (company names, figures) is tokenised first. If
+    no sanitiser is available — or LOCAL_ONLY is set (no external calls) — insight
+    extraction is skipped entirely rather than leaking restored text.
+
     Returns: number of insights stored
     """
-    insights = extract_memory_insights(analysis_text, module_id, business_name)
+    from config.settings import settings
+    if sanitiser is None or settings.LOCAL_ONLY:
+        return 0
+
+    insights = extract_memory_insights(analysis_text, module_id, business_name, sanitiser=sanitiser)
 
     if not insights:
         return 0

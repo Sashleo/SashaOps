@@ -43,20 +43,22 @@ def init_database() -> None:
 
     _connection = sqlite.connect(db_path, check_same_thread=False)
 
-    # Set the encryption key (SQLCipher-specific pragma)
-    # This must be the first operation on a new or existing encrypted database
+    # Set the encryption key (SQLCipher-specific pragma).
+    # This must be the first operation on a new or existing encrypted database.
+    # A wrong password (or any SQLCipher failure) MUST hard-fail — never degrade to
+    # plaintext. The only acceptable non-encrypted path is the missing-pysqlcipher3
+    # SystemExit above (which itself refuses to run).
     try:
         _password = settings.DB_MASTER_PASSWORD.replace("'", "''")
-        _connection.execute(
-            f"PRAGMA key = '{_password}'"
-        )
-        # Verify the key is correct by running a test query
+        _connection.execute(f"PRAGMA key = '{_password}'")
+        # Verify the key is correct by touching the encrypted header.
         _connection.execute("SELECT count(*) FROM sqlite_master")
         log.info("Encrypted database opened", path=db_path)
     except Exception as e:
-        log.warning(
-            "SQLCipher PRAGMA not supported (unencrypted mode)",
-            note="Install pysqlcipher3 for encryption"
+        raise SystemExit(
+            "FATAL: Database key rejected or SQLCipher failure — "
+            f"check DB_MASTER_PASSWORD ({type(e).__name__}). "
+            "Refusing to run without encryption."
         )
 
     # Performance settings

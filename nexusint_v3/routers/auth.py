@@ -27,6 +27,25 @@ router   = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
 
+_COMMON_PASSWORDS = {
+    "password", "password123", "12345678", "123456789", "1234567890",
+    "qwerty", "qwertyuiop", "admin", "administrator", "letmein",
+    "welcome", "changeme", "iloveyou", "sashaops", "sashaops123",
+    "abc123456", "passw0rd", "adminadmin", "root", "toor",
+}
+
+
+def _password_policy_error(password: str) -> Optional[str]:
+    """Return an error string if the password fails policy, else None. (M2)"""
+    if len(password) < 12:
+        return "Admin password must be at least 12 characters."
+    if password.lower() in _COMMON_PASSWORDS:
+        return "That password is too common — choose a stronger one."
+    if password.isdigit() or password.isalpha():
+        return "Password must mix letters, digits and/or symbols."
+    return None
+
+
 def _get_or_create_admin(db) -> Optional[dict]:
     """Get admin user, or return None if none exists yet."""
     row = db.execute("SELECT * FROM users WHERE username = 'admin'").fetchone()
@@ -89,6 +108,7 @@ async def login_post(
     username: str = Form(...),
     password: str = Form(...),
     totp_code: Optional[str] = Form(None),
+    bootstrap_token: Optional[str] = Form(None),
 ):
     ip = request.client.host if request.client else "unknown"
 
@@ -104,17 +124,31 @@ async def login_post(
     db    = get_db()
     admin = _get_or_create_admin(db)
 
-    # First run: create admin account
+    # First run: create admin account (M2 — gated + password policy)
     if not admin:
-        if len(password) < 8:
+        # Gate: request must come from localhost, OR a matching ADMIN_BOOTSTRAP_TOKEN.
+        is_local = ip in ("127.0.0.1", "::1", "localhost")
+        token_ok = bool(settings.ADMIN_BOOTSTRAP_TOKEN) and \
+            bootstrap_token == settings.ADMIN_BOOTSTRAP_TOKEN
+        if not (is_local or token_ok):
+            log.warning("Blocked first-run admin creation from non-local host", ip=ip)
             return templates.TemplateResponse("login.html", {
                 "request": request,
                 "version": settings.APP_VERSION,
-                "error":   "Password must be at least 8 characters.",
+                "error":   "First-run admin creation must originate from localhost or "
+                           "supply a valid ADMIN_BOOTSTRAP_TOKEN.",
+                "first_run": True,
+            }, status_code=403)
+        pw_err = _password_policy_error(password)
+        if pw_err:
+            return templates.TemplateResponse("login.html", {
+                "request": request,
+                "version": settings.APP_VERSION,
+                "error":   pw_err,
                 "first_run": True,
             })
         admin = _create_admin(db, password)
-        log.info("Admin account created on first run")
+        log.info("Admin account created on first run", ip=ip)
 
     # Verify credentials
     if username != "admin" or not verify_password(password, admin["password_hash"]):

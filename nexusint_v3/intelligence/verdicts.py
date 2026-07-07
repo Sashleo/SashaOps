@@ -273,10 +273,37 @@ def margin_verdict(
 
 # ── Master entry point ─────────────────────────────────────────────────────
 
+def _load_sector_medians(sector: str) -> dict:
+    """Build a medians dict from the M9 psx_sector_medians table for a sector.
+
+    Only metrics with >= the minimum peer count are included; sectors/metrics with
+    too few valid peers are simply absent, and the verdict functions then skip the
+    peer comparison (stating no benchmark) rather than comparing against noise.
+    """
+    out: dict = {}
+    if not sector:
+        return out
+    try:
+        from intelligence.sector_medians import get_sector_median
+        for metric, key in (("current_ratio", "current_ratio"),
+                            ("debt_to_equity", "de_ratio"),
+                            ("net_margin", "net_margin"),
+                            ("roe", "roe"),
+                            ("gross_margin", "gross_margin"),
+                            ("pe", "pe_ratio")):
+            m = get_sector_median(sector, metric)
+            if m:
+                out[key] = m["median"]
+    except Exception:
+        pass
+    return out
+
+
 def compute_verdicts(
     financials:      dict,
     sector_medians:  dict | None = None,
     history:         dict | None = None,
+    sector:          str = "",
 ) -> dict[str, str]:
     """
     Compute all interpretation tokens for a given financials dict.
@@ -292,7 +319,7 @@ def compute_verdicts(
         Dict of hint → interpretation string. Each entry becomes a token via
         `sheet.add(value, hint=key)` in the calling code.
     """
-    medians = sector_medians or {}
+    medians = sector_medians or _load_sector_medians(sector)
     hist    = history or {}
 
     verdicts: dict[str, str] = {}

@@ -325,18 +325,26 @@ def run_fast(prompt: str, sanitiser=None) -> str:
         return ""
 
 
-def extract_memory_insights(analysis_text: str, module_id: str, business: str) -> list[str]:
+def extract_memory_insights(analysis_text: str, module_id: str, business: str,
+                            sanitiser=None) -> list[str]:
     """
     Ask Gemini to extract 2-3 key insights from an analysis result.
     These are stored in the memory system for future analyses.
-    Returns list of insight strings.
+
+    SECURITY: analysis_text is the RESTORED module output and contains Class-S data
+    (company name, figures). It MUST be sanitised BEFORE it enters the prompt and the
+    sanitiser threaded into run_fast for the round-trip. Without a sanitiser we refuse
+    to send anything.
     """
-    # Never send business name to Gemini — use {{COMPANY}} token (Class S)
+    if sanitiser is None:
+        return []
+    # Sanitise the full text FIRST, then slice — never slice-then-send raw text.
+    safe_text = sanitiser.sanitise(analysis_text or "")[:800]
     prompt = f"""
 You just completed a {module_id} analysis for {{{{COMPANY}}}}.
 
 Analysis excerpt (first 800 chars):
-{analysis_text[:800]}
+{safe_text}
 
 Extract exactly 2-3 KEY INSIGHTS worth remembering for future analyses.
 
@@ -349,7 +357,7 @@ Rules:
 
 Return ONLY the insights, one per line, no numbering or bullets.
 """
-    result = run_fast(prompt)
+    result = run_fast(prompt, sanitiser=sanitiser)
     return [
         line.strip()
         for line in result.strip().split("\n")

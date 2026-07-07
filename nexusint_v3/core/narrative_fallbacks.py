@@ -336,31 +336,17 @@ def _render_sentiment(
         "",
     ]
 
-    # FinBERT from PSX announcements
-    if sentiment_scores:
-        pos  = sentiment_scores.get("positive", 0)
-        neu  = sentiment_scores.get("neutral", 0)
-        neg  = sentiment_scores.get("negative", 0)
-        n    = sentiment_scores.get("n", 0)
-        top  = sentiment_scores.get("top", [])
-
-        dominant = "Positive" if pos >= neg and pos >= neu else ("Negative" if neg > pos else "Neutral")
-        icon = "✅" if dominant == "Positive" else ("🔴" if dominant == "Negative" else "🔵")
-
+    # M10 — PSX announcements shown as a TYPE breakdown (dividend/buyback vs
+    # procedural vs show-cause), never a FinBERT "100% neutral".
+    if sentiment_scores and sentiment_scores.get("kind") == "announcement_types":
+        n = sentiment_scores.get("n", 0)
         lines += [
-            f"### {icon} PSX Announcements Sentiment (FinBERT — {n} headlines)",
-            "",
-            "| Label    | Score |",
-            "|----------|-------|",
-            f"| Positive | {pos:.0%} |",
-            f"| Neutral  | {neu:.0%} |",
-            f"| Negative | {neg:.0%} |",
-            "",
-            f"**Dominant tone: {dominant}**",
-            "",
+            f"### PSX Announcements — type breakdown ({n} filings)", "",
+            f"**{sentiment_scores.get('summary', 'no announcements')}**", "",
         ]
+        top = sentiment_scores.get("top", [])
         if top:
-            lines.append("**Recent PSX announcements:**")
+            lines.append("**Most recent:**")
             for h in top[:5]:
                 lines.append(f"- {h}")
             lines.append("")

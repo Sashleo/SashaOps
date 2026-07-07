@@ -26,8 +26,20 @@ async def run_exchange_scheduler() -> None:
 
     while True:
         await _run_all_scrapers()
+        await _compute_sector_medians()
         log.info("Exchange scraper cycle complete, sleeping", hours=REFRESH_INTERVAL // 3600)
         await asyncio.sleep(REFRESH_INTERVAL)
+
+
+async def _compute_sector_medians() -> None:
+    """Recompute PSX sector-median benchmarks (M9) after each scrape cycle."""
+    loop = asyncio.get_running_loop()
+    try:
+        from intelligence.sector_medians import compute_sector_medians
+        rows = await loop.run_in_executor(None, compute_sector_medians)
+        log.info("Sector medians refreshed", rows=rows)
+    except Exception as e:
+        log.warning("Sector median computation failed", error=str(e)[:120])
 
 
 async def _run_all_scrapers() -> None:

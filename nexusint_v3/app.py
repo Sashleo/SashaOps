@@ -90,10 +90,21 @@ def create_app() -> FastAPI:
     # Second mount so verification endpoints resolve at /debug/* (e.g. /debug/scrapers).
     app.include_router(debug_router.router,     prefix="/debug",          tags=["debug"])
 
-    # ── Health check ──────────────────────────────────────────────────────────
+    # ── Health & readiness ──────────────────────────────────────────────────────
     @app.get("/health")
     async def health():
+        # Liveness — process is up.
         return {"status": "ok", "version": settings.APP_VERSION}
+
+    @app.get("/ready")
+    async def ready():
+        # Readiness — the encrypted DB actually answers a query (L3).
+        try:
+            from database.connection import get_db
+            get_db().execute("SELECT 1")
+            return {"status": "ready"}
+        except Exception as e:
+            return JSONResponse({"status": "not-ready", "error": str(e)[:120]}, status_code=503)
 
     # ── Startup ───────────────────────────────────────────────────────────────
     @app.on_event("startup")

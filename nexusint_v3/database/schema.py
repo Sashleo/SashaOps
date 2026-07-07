@@ -324,6 +324,16 @@ CREATE TABLE IF NOT EXISTS psx_watchlist (
     added_at   TEXT NOT NULL
 );
 
+-- Sector-median benchmarks (computed nightly from validated company ratios; M9)
+CREATE TABLE IF NOT EXISTS psx_sector_medians (
+    sector         TEXT NOT NULL,
+    metric         TEXT NOT NULL,
+    median         REAL,
+    company_count  INTEGER NOT NULL DEFAULT 0,
+    computed_date  TEXT NOT NULL,
+    UNIQUE(sector, metric)
+);
+
 -- Competitor clusters (groups of PSX symbols)
 CREATE TABLE IF NOT EXISTS psx_clusters (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,

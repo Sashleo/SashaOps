@@ -24,6 +24,37 @@ templates = Jinja2Templates(directory="templates")
 
 MAX_FILE_BYTES = 50 * 1024 * 1024  # 50 MB
 
+# Allowed upload kinds → canonical extension. Detection is by magic bytes only.
+_ALLOWED_EXT = {"pdf": ".pdf", "zip": ".docx", "png": ".png", "jpeg": ".jpg"}
+
+
+def _sniff_magic(content: bytes) -> Optional[str]:
+    """Identify the real file type from its leading bytes. None if not allowed.
+    Returns 'pdf' | 'zip' (docx/xlsx) | 'png' | 'jpeg'."""
+    if not content or len(content) < 4:
+        return None
+    if content[:4] == b"%PDF":
+        return "pdf"
+    if content[:2] == b"PK":                       # zip container → docx/xlsx
+        return "zip"
+    if content[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png"
+    if content[:3] == b"\xff\xd8\xff":             # JPEG SOI
+        return "jpeg"
+    return None
+
+
+def _safe_filename(raw: str, kind: str) -> str:
+    """Strip path separators/control chars, cap length, force an allowlisted extension.
+    The original name is only ever a display label, never used as a filesystem path."""
+    import os
+    import re
+    base = os.path.basename(raw or "upload")          # drop any path component
+    base = re.sub(r"[\x00-\x1f/\\]", "", base)         # control chars + separators
+    base = re.sub(r"\.+", ".", base).strip(". ") or "upload"
+    stem = base.rsplit(".", 1)[0][:80] or "upload"
+    return f"{stem}{_ALLOWED_EXT.get(kind, '.bin')}"
+
 
 def _sidebar(request: Request) -> dict:
     clients      = list_clients()
@@ -76,7 +107,16 @@ async def upload_document(
     if len(content) > MAX_FILE_BYTES:
         return RedirectResponse(url="/documents?error=File+too+large", status_code=302)
 
-    filename = file.filename or "upload"
+    # M1 — validate real file type by magic bytes (not the client-supplied extension),
+    # enforce an extension allowlist that matches, and sanitise the stored filename.
+    kind = _sniff_magic(content)
+    if kind is None:
+        return RedirectResponse(
+            url="/documents?error=Unsupported+file+type+(only+PDF,+DOCX,+XLSX,+PNG,+JPEG)",
+            status_code=302,
+        )
+    safe_name = _safe_filename(file.filename or "upload", kind)
+    filename = safe_name
     doc_type = detect_doc_type(filename)
 
     client_key = _get_client_key(active_client["id"])

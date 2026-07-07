@@ -13,6 +13,35 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any
 
+import structlog
+
+_log = structlog.get_logger()
+
+# ── Prompt-injection defence (M4) ───────────────────────────────────────────
+# Imperative patterns an attacker might embed in an uploaded document to hijack a
+# downstream prompt. Any line matching these is dropped from extracted text before
+# it can reach a prompt. Document text is Class X (already excluded from Gemini);
+# this is defence-in-depth for any local text that could reach a template/prompt.
+_INJECTION_RE = re.compile(
+    r"ignore\s+(all\s+)?previous|system\s+prompt|you\s+are\s+now|disregard\s+.*instructions",
+    re.I,
+)
+
+
+def strip_prompt_injection(text: str) -> str:
+    """Drop lines containing imperative prompt-injection patterns. Logs when hit."""
+    if not text:
+        return text
+    out, dropped = [], 0
+    for line in text.split("\n"):
+        if _INJECTION_RE.search(line):
+            dropped += 1
+            continue
+        out.append(line)
+    if dropped:
+        _log.warning("Prompt-injection lines stripped from extracted text", lines=dropped)
+    return "\n".join(out)
+
 
 # ── PII scrubbing patterns ──────────────────────────────────────────────────
 

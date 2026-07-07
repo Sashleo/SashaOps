@@ -194,7 +194,7 @@ async def run_stage2(run_id, client_id, business_name, region_id, module_list, c
             run_token_sheet.add(business_name, hint="COMPANY")
             run_token_sheet, _ = tokenise_financials(local_result, run_token_sheet)
             try:
-                for hint, verdict_text in compute_verdicts(local_result).items():
+                for hint, verdict_text in compute_verdicts(local_result, sector=sector_of_business).items():
                     run_token_sheet.add(verdict_text, hint=hint)
             except Exception as _vex:
                 log.warning("verdicts compute failed — interpretation tokens skipped",
@@ -496,6 +496,7 @@ async def run_stage2(run_id, client_id, business_name, region_id, module_list, c
                     client_name=client_row.get("name", ""),
                     client_key=client_key,
                     industry_tag=industry,
+                    sanitiser=sanitiser,   # SECURITY: tokenise Class-S before Gemini
                 )
 
             mark_module_complete(run_id, job.mod_id)

@@ -3,6 +3,14 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Route all model/browser caches under /app so a non-root runtime user can read them
+# (models and Playwright browsers are downloaded at build time below).
+ENV HF_HOME=/app/.cache/huggingface \
+    SENTENCE_TRANSFORMERS_HOME=/app/.cache/sentence-transformers \
+    TORCH_HOME=/app/.cache/torch \
+    PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright \
+    XDG_CACHE_HOME=/app/.cache
+
 # ── System dependencies ───────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -90,13 +98,18 @@ EOF
 # ── Copy application ──────────────────────────────────────────────────────────
 COPY . .
 
-# ── Create data directories ───────────────────────────────────────────────────
-RUN mkdir -p /app/data/documents
-
 # ── Environment ───────────────────────────────────────────────────────────────
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+
+# ── Drop root: run as an unprivileged user (uid 10001) ────────────────────────
+# Create the runtime dirs the app writes to (encrypted DB, documents, .tmp caches)
+# and hand ownership of /app to the non-root user.
+RUN useradd -m -u 10001 sashaops \
+    && mkdir -p /app/data/documents /app/.tmp \
+    && chown -R sashaops:sashaops /app
+USER sashaops
 
 EXPOSE 8000
 

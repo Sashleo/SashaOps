@@ -39,7 +39,7 @@ _session_key: Optional[bytes] = None
 _login_attempts: Dict[str, dict] = {}  # ip -> {count, lockout_until}
 
 # ── Public routes (no auth required) ─────────────────────────────────────────
-_PUBLIC_EXACT   = {"/", "/login", "/health"}
+_PUBLIC_EXACT   = {"/", "/login", "/health", "/ready"}
 _PUBLIC_PREFIXES = {"/static"}
 
 
@@ -417,6 +417,18 @@ def _add_security_headers(response) -> None:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"]        = "DENY"
         response.headers["Referrer-Policy"]        = "strict-origin-when-cross-origin"
+        # M3 — Content-Security-Policy. Inline styles/scripts are used by the HTMX
+        # templates so 'unsafe-inline' is required there; everything else is self-only.
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'"
+        )
     except Exception:
         pass
 
