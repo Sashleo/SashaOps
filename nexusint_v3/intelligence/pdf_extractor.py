@@ -173,19 +173,27 @@ class PaddleOCRExtractor:
                 "confidence": self.confidence}
 
 
-def extract_financials(pdf_bytes: bytes) -> dict:
+def extract_financials(pdf_bytes: bytes, ocr: bool = True) -> dict:
     """
     Try each extractor in order; return the first result with >= 3 matched line items.
     Returns {"financials": {}, "method": "none", "confidence": 0.0} if all fail.
+
+    ocr=False runs only the fast pdfplumber extractors (digital PDFs, sub-second) and
+    skips the slow Tesseract/OpenCV/Paddle stages. Callers use this in the request path
+    so a scanned PDF (minutes of OCR) never blocks; the OCR stages are run separately in
+    the background. ocr=True runs the full chain.
     """
     extractors = [
         PdfplumberTablesExtractor(),
         PdfplumberTextExtractor(),
-        TesseractRawExtractor(),
-        TesseractPreprocessedExtractor(),
     ]
-    if os.environ.get("PADDLEOCR") == "true":
-        extractors.append(PaddleOCRExtractor())
+    if ocr:
+        extractors += [
+            TesseractRawExtractor(),
+            TesseractPreprocessedExtractor(),
+        ]
+        if os.environ.get("PADDLEOCR") == "true":
+            extractors.append(PaddleOCRExtractor())
 
     for extractor in extractors:
         try:
@@ -201,5 +209,8 @@ def extract_financials(pdf_bytes: bytes) -> dict:
             log.debug("Extractor returned insufficient data",
                       method=result.get("method"), matched_fields=n)
 
-    log.warning("All extractors failed - no financial data")
+    if ocr:
+        log.warning("All extractors failed - no financial data")
+    else:
+        log.debug("No digital text layer - OCR required (deferred to background)")
     return {"financials": {}, "method": "none", "confidence": 0.0}

@@ -18,6 +18,7 @@ from __future__ import annotations
 import io
 import json
 import re
+import threading
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -174,21 +175,59 @@ def fetch_psx_report_financials(ticker: str) -> Optional[dict]:
         _save_cache(ticker, {})
         return None
 
-    # Multi-stage extraction chain (pdfplumber tables -> text -> Tesseract -> opencv
-    # preprocessed -> optional PaddleOCR). Returns the first result with >=3 fields.
+    # Fast path (sub-second): digital PDFs via pdfplumber. Safe in the request.
     from intelligence.pdf_extractor import extract_financials
-    res = extract_financials(pdf_bytes)
+    res = extract_financials(pdf_bytes, ocr=False)
     doc = res.get("financials") or {}
-    method = res.get("method", "none")
     if doc:
-        doc["_method"] = method
-        if method.startswith(("tesseract", "paddle")):
-            doc["_ocr"] = True   # mark lower-confidence OCR-derived figures
-    _save_cache(ticker, doc)   # cached so a second analysis is a hit (no re-OCR)
-    if doc:
+        doc["_method"] = res.get("method", "none")
+        _save_cache(ticker, doc)
         log.info("PSX report parsed", ticker=ticker, fields=sorted(doc.keys()),
-                 method=method, url=url)
-    return doc or None
+                 method=doc["_method"], url=url)
+        return doc
+
+    # Scanned PDF (no text layer): OCR takes minutes and must never block the request
+    # (the caller has a hard timeout). Run it in the background; it caches the result
+    # so the next analysis is instant. This run falls back to the psx_summary source.
+    _schedule_background_ocr(ticker, pdf_bytes, url)
+    return None
+
+
+# ── Background OCR: keeps the slow Tesseract/OpenCV chain off the request path ──
+_ocr_lock    = threading.Lock()
+_ocr_pending: set[str] = set()
+
+
+def _schedule_background_ocr(ticker: str, pdf_bytes: bytes, url: str) -> None:
+    """OCR a scanned report off-thread and cache the result. At most one job per
+    ticker at a time; the per-day file cache prevents re-OCR on later analyses."""
+    with _ocr_lock:
+        if ticker in _ocr_pending:
+            return
+        _ocr_pending.add(ticker)
+
+    def _worker():
+        try:
+            from intelligence.pdf_extractor import extract_financials
+            res    = extract_financials(pdf_bytes, ocr=True)
+            doc    = res.get("financials") or {}
+            method = res.get("method", "none")
+            if doc:
+                doc["_method"] = method
+                if method.startswith(("tesseract", "paddle")):
+                    doc["_ocr"] = True
+            _save_cache(ticker, doc)   # cache even when empty: no re-OCR today
+            log.info("Background OCR complete", ticker=ticker, fields=len(doc),
+                     method=method, url=url)
+        except Exception as e:
+            log.warning("Background OCR failed", ticker=ticker, error=str(e)[:120])
+            _save_cache(ticker, {})    # cache empty so we do not retry all day
+        finally:
+            with _ocr_lock:
+                _ocr_pending.discard(ticker)
+
+    threading.Thread(target=_worker, name=f"ocr-{ticker}", daemon=True).start()
+    log.info("Scanned PDF - OCR scheduled in background", ticker=ticker)
 
 
 def find_latest_report_url(ticker: str) -> Optional[str]:
