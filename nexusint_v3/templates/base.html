@@ -8,8 +8,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/main.css">
-  <!-- HTMX for reactive UI without a JS framework -->
-  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+  <!-- HTMX for reactive UI without a JS framework. Self-hosted (not a CDN) so it
+       loads under the strict Content-Security-Policy (script-src 'self') and makes
+       no external network call. -->
+  <script src="/static/js/htmx.min.js" defer></script>
   {% block head %}{% endblock %}
 </head>
 <body>
