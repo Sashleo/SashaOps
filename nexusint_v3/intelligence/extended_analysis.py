@@ -21,23 +21,21 @@ EXTENDED_MODULES: dict[str, Module] = {
 
     "esg": Module(
         id="esg",
-        icon="🌱",
+        icon="",
         label="ESG Assessment",
         group="Intelligence",
         color="#4ade80",
-        description="Environmental, Social, Governance risk and opportunity scoring",
+        description="Sector-based ESG risk framework and available disclosure signals from PSX filings",
         system_prompt=(
-            "You are an ESG analyst. Search for real ESG data: "
-            "emissions disclosures, sustainability reports, governance structures, "
-            "labour practices, board composition, controversies, ESG ratings from "
-            "MSCI, Sustainalytics, or local equivalents. "
-            "Score each pillar 1-10 (10 = best practice). "
-            "Identify material ESG risks that could impact valuation or operations. "
-            "Consider regional ESG expectations — different markets have different baselines."
+            "Write an ESG section using only the sector compliance framework and any "
+            "signals present in the provided PSX data. State which ESG dimensions are "
+            "material for this sector. Note where data is absent. "
+            "Do not assign ESG scores without supporting data. "
+            "Do not reference MSCI, Sustainalytics, or third-party ratings not in the data."
         ),
         prompt_builder=lambda b, c, m: (
             f"ESG assessment for \"{b}\"{f' in {c}' if c else ''}.\n\n"
-            f"Search for sustainability reports, ESG ratings, controversies, governance data.\n\n"
+            f"Using the sector ESG framework and any signals present in the provided data, assess the following.\n\n"
             f"**Environmental (score 1-10):**\n"
             f"- Carbon footprint / emissions disclosure\n"
             f"- Energy source and efficiency\n"
@@ -64,26 +62,24 @@ EXTENDED_MODULES: dict[str, Module] = {
 
     "regulatory_risk": Module(
         id="regulatory_risk",
-        icon="⚖️",
+        icon="",
         label="Regulatory Risk",
         group="Intelligence",
         color="#fca5a5",
-        description="Compliance exposure, pending regulations, enforcement history",
+        description="Applicable laws, regulator, compliance checklist, and red flag signals",
         system_prompt=(
-            "You are a regulatory risk specialist. "
-            "Search for: current regulatory framework, pending legislation, "
-            "enforcement actions in this sector, compliance requirements, "
-            "regulatory changes in the last 12 months, upcoming changes expected. "
-            "Map each regulatory risk to financial impact potential. "
-            "Be specific about which regulations apply and what non-compliance costs."
+            "Write a regulatory risk section using the compliance profile provided. "
+            "State the primary regulator, governing laws, and key compliance requirements. "
+            "Flag any red signals found in announcements or uploaded documents. "
+            "Do not add regulatory commentary beyond what the compliance data states."
         ),
         prompt_builder=lambda b, c, m: (
             f"Regulatory risk mapping for \"{b}\"{f' in {c}' if c else ''}.\n\n"
-            f"Search for current and pending regulations affecting their sector.\n\n"
+            f"Using the compliance profile provided in the context, map the regulatory exposure.\n\n"
             f"**Current Regulatory Exposure:**\n"
             f"- List all material regulations they must comply with\n"
             f"- Compliance cost estimate where knowable\n"
-            f"- Known violations or enforcement actions (search news and regulatory filings)\n\n"
+            f"- Known violations or enforcement actions present in the provided data\n\n"
             f"**Pending Regulatory Changes:**\n"
             f"- Regulations proposed or under consultation in next 12-24 months\n"
             f"- Probability of passage and timeline\n"
@@ -100,18 +96,16 @@ EXTENDED_MODULES: dict[str, Module] = {
 
     "pestle": Module(
         id="pestle",
-        icon="🔭",
+        icon="",
         label="PESTLE Analysis",
         group="Core",
         color="#a5b4fc",
-        description="Political, Economic, Social, Technological, Legal, Environmental factors",
+        description="PESTLE factors scored from macro data, sector rules, and available signals",
         system_prompt=(
-            "You are a strategic analyst conducting a PESTLE analysis. "
-            "Search for real, current data on each factor. "
-            "Rate each factor's impact: Positive/Negative/Neutral, "
-            "magnitude 1-10, time horizon (now/1yr/3yr+). "
-            "Be specific — name actual policies, trends, technologies, laws. "
-            "Conclude with the 3 most significant PESTLE factors for this business."
+            "Write a PESTLE analysis using only the macro indicators, sector compliance "
+            "data, and news signals provided. Score each factor with specific reference "
+            "to the data provided. Do not rate factors without supporting data in context. "
+            "Do not add factors based on general knowledge not grounded in the provided data."
         ),
         prompt_builder=lambda b, c, m: (
             f"PESTLE analysis for \"{b}\"{f' in {c}' if c else ''}.\n\n"

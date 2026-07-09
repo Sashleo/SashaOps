@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Markets — SashaOps{% endblock %}
+{% block title %}Markets - SashaOps{% endblock %}
 
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -9,12 +9,12 @@
 
 <div class="page-header">
   <div>
-    <div class="page-title">📈 Markets</div>
+    <div class="page-title">Markets</div>
     <div class="page-subtitle">Exchange indices · Forex rates · Company data · Local financial analysis</div>
   </div>
   <div class="flex gap-8 items-center" style="flex-wrap:wrap">
     <input type="hidden" id="market-region" name="market_region" value="pakistan">
-    <div class="badge badge-green" style="font-size:0.9em">🇵🇰 Pakistan Stock Exchange (PSX)</div>
+    <div class="badge badge-green" style="font-size:0.9em">Pakistan Stock Exchange (PSX)</div>
 
     <!-- Period selector -->
     <div class="flex gap-4" id="period-btns">
@@ -29,7 +29,7 @@
     <button id="scrape-btn" class="btn" style="font-size:0.85em;white-space:nowrap"
             onclick="startScrape(this)"
             title="Run the PSX market + SBP forex scrapers now">
-      ⬇ Run Exchange Scraper
+      Run Exchange Scraper
     </button>
   </div>
 </div>
@@ -84,7 +84,7 @@
     <div class="card mb-16" style="padding:16px">
       <canvas id="index-chart" height="200"></canvas>
       <div id="chart-empty" style="display:none;text-align:center;padding:40px;color:var(--text-muted);font-size:0.85em">
-        No historical index data yet — the exchange scraper runs every 6 hours.
+        No historical index data yet - the exchange scraper runs every 6 hours.
         {% if exchange_url %}
         <br><a href="{{ exchange_url }}" target="_blank" rel="noopener" style="color:var(--accent)">
           View live on {{ exchange_name }} ↗</a>
@@ -102,7 +102,7 @@
       <div class="ticker-row">
         <div class="ticker-name">{{ idx.name }}{% if idx.is_partial %} <span class="badge badge-yellow">~</span>{% endif %}</div>
         <div class="ticker-price text-mono">
-          {{ "%.2f"|format(idx.current_price) if idx.current_price else '—' }}
+          {{ "%.2f"|format(idx.current_price) if idx.current_price else '-' }}
           <span style="font-size:0.8em;color:var(--text-muted)"> {{ idx.currency }}</span>
         </div>
         {% if idx.change_pct_1d is not none %}
@@ -117,7 +117,7 @@
         <div class="ticker-name">{{ db_index.index_name }}
           <span class="badge badge-gray" style="font-size:0.7em;margin-left:4px">scraped</span>
         </div>
-        <div class="ticker-price text-mono">{{ "%.2f"|format(db_index.close_price) if db_index.close_price else '—' }}</div>
+        <div class="ticker-price text-mono">{{ "%.2f"|format(db_index.close_price) if db_index.close_price else '-' }}</div>
         {% if db_index.change_pct is not none %}
         <div class="{% if db_index.change_pct >= 0 %}ticker-change-pos{% else %}ticker-change-neg{% endif %}">
           {{ "+%.2f"|format(db_index.change_pct) if db_index.change_pct >= 0 else "%.2f"|format(db_index.change_pct) }}%
@@ -127,7 +127,7 @@
       </div>
       {% else %}
       <div class="empty-state">
-        <div class="empty-icon">📈</div>
+        <div class="empty-icon"></div>
         <div class="empty-text">Index data not yet available. Exchange scraper runs every 6 hours.</div>
         {% if exchange_url %}
         <a href="{{ exchange_url }}" target="_blank" rel="noopener" class="btn" style="margin-top:12px">
@@ -179,7 +179,7 @@
                     border-left:2px solid {% if s.status == 'success' %}var(--accent){% elif s.status == 'failed' %}#ff4444{% else %}#ffaa00{% endif %}">
           <span style="color:var(--text-secondary)">{{ s.scraper_id }}</span>
           {% if s.status == 'failed' %}
-          <span style="color:#ff4444;margin-left:8px">✕ failed</span>
+          <span style="color:#ff4444;margin-left:8px">failed</span>
           {% else %}
           <span style="color:var(--text-muted);margin-left:8px">+{{ s.rows_inserted }}</span>
           {% endif %}
@@ -233,10 +233,10 @@
 <!-- ── Local financial analysis (no API) ─────────────────────────────────── -->
 <div class="card mb-16">
   <div style="font-size:0.8em;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">
-    Financial Analysis — Local (No API)
+    Financial Analysis - Local (No API)
   </div>
   <div style="font-size:0.82em;color:var(--text-muted);margin-bottom:12px">
-    Enter a PSX ticker symbol (e.g. ENGRO, LUCK, HBL). Ratios, DCF, Altman Z-Score computed locally from PSX data — instant, no AI call.
+    Enter a PSX ticker symbol (e.g. ENGRO, LUCK, HBL). Ratios, DCF, Altman Z-Score computed locally from PSX data - instant, no AI call.
     Use "Get Full AI Analysis" to run the 19-module report.
   </div>
   <div class="flex gap-8 items-center" style="flex-wrap:wrap">
@@ -284,7 +284,7 @@
   </div>
   <div style="font-size:0.82em;color:var(--text-muted);margin-bottom:12px">
     Search by company name or ticker. Fetches board members, financial results, announcements,
-    dividends, and ratios directly from the PSX data portal — no AI needed.
+    dividends, and ratios directly from the PSX data portal - no AI needed.
   </div>
 
   <!-- Search / autocomplete row -->
@@ -342,7 +342,7 @@
 <div class="card mb-16">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <div style="font-size:0.8em;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">
-      Industry Overview — Sector Breakdown
+      Industry Overview - Sector Breakdown
     </div>
     <div style="display:flex;gap:8px;align-items:center">
       <input type="hidden" id="industry-exchange" value="PSX">
@@ -354,7 +354,7 @@
     </div>
   </div>
   <div style="font-size:0.8em;color:var(--text-muted);margin-bottom:10px">
-    Live sector data scraped from PSX market summary — all 44 sectors with current prices,
+    Live sector data scraped from PSX market summary - all 44 sectors with current prices,
     changes, and volumes. Click "View in Companies" to filter the Listed Companies table by sector.
   </div>
   <div id="sector-loading" style="display:none;color:var(--text-muted);font-size:0.82em;margin-bottom:8px">
@@ -437,7 +437,7 @@
         <button class="btn" style="padding:2px 8px;font-size:0.72em;opacity:0.5"
                 hx-delete="/markets/watchlist/{{ item.exchange_id }}/{{ item.ticker }}"
                 hx-target="closest div"
-                hx-swap="outerHTML">✕</button>
+                hx-swap="outerHTML">X</button>
       </div>
       {% endfor %}
     {% else %}
@@ -574,7 +574,7 @@ window.startScrape = function(btn) {
   summary.textContent   = '';
   panel.style.display   = 'block';
   btn.disabled    = true;
-  btn.textContent = '⬇ Fetching…';
+  btn.textContent = 'Fetching…';
 
   const scraperEls = {};  // scraper_id → div element
 
@@ -607,7 +607,7 @@ window.startScrape = function(btn) {
         : (msg.error ? msg.error.slice(0, 60) : 'failed');
       row.style.borderLeftColor = color;
       row.innerHTML = `<span style="color:var(--text-secondary)">${msg.scraper_id}</span>`
-                    + `<span style="color:${color};font-size:0.92em">${ok ? '✓' : '✕'} ${detail}</span>`;
+                    + `<span style="color:${color};font-size:0.92em">${ok ? 'OK' : 'X'} ${detail}</span>`;
     }
 
     else if (msg.type === 'complete') {
@@ -619,10 +619,10 @@ window.startScrape = function(btn) {
       summary.style.color      = allOk ? 'var(--accent)' : '#ffaa00';
       summary.style.border     = `1px solid ${allOk ? 'rgba(0,255,136,0.25)' : 'rgba(255,170,0,0.25)'}`;
       summary.textContent      = allOk
-        ? `✓ Done — ${msg.total_inserted} new rows across all sources`
-        : `Done — ${msg.total_inserted} new rows, ${msg.failed} source(s) failed`;
+        ? `Done - ${msg.total_inserted} new rows across all sources`
+        : `Done - ${msg.total_inserted} new rows, ${msg.failed} source(s) failed`;
       btn.disabled    = false;
-      btn.textContent = '⬇ Fetch Fresh Data';
+      btn.textContent = 'Fetch Fresh Data';
       // Refresh chart
       const region = document.getElementById('market-region').value;
       fetchChartData(region, '30d');
@@ -646,12 +646,12 @@ window.startScrape = function(btn) {
   es.onerror = function() {
     es.close();
     btn.disabled    = false;
-    btn.textContent = '⬇ Fetch Fresh Data';
+    btn.textContent = 'Fetch Fresh Data';
     summary.style.display    = 'block';
     summary.style.background = 'rgba(255,68,68,0.08)';
     summary.style.color      = '#ff4444';
     summary.style.border     = '1px solid rgba(255,68,68,0.25)';
-    summary.textContent      = 'Connection error — check that the server is running.';
+    summary.textContent      = 'Connection error - check that the server is running.';
   };
 };
 

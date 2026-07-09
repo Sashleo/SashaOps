@@ -76,7 +76,7 @@ def validate_metric(name: str, value, is_bank: bool = False, raw_inputs: Optiona
     log.warning("Implausible metric excluded", metric=name, value=v,
                 bounds=(lo, hi), is_bank=is_bank, raw_inputs=raw_inputs or {})
     return {"value": None, "status": "implausible",
-            "note": f"{name}={v:.4g} outside plausible range [{lo}, {hi}] — data error suspected"}
+            "note": f"{name}={v:.4g} outside plausible range [{lo}, {hi}] - data error suspected"}
 
 
 def validate_all(metrics: dict, is_bank: bool = False, raw_inputs: Optional[dict] = None) -> dict:

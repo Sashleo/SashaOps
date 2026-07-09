@@ -24,7 +24,7 @@ def _scraper_data_preview(scraper_id: str, data: dict) -> list[tuple[str, str]]:
 
     def _fmt(v) -> str:
         if v is None:
-            return "—"
+            return "-"
         if isinstance(v, dict):
             val = v.get("value")
             unit = v.get("unit", "")
@@ -55,14 +55,14 @@ def _scraper_data_preview(scraper_id: str, data: dict) -> list[tuple[str, str]]:
             title = entry.get("title") or entry.get("heading") or ""
             date_ = entry.get("date", "")
             if title:
-                items.append((date_[:10] if date_ else "—", title[:80]))
+                items.append((date_[:10] if date_ else "-", title[:80]))
     elif scraper_id == "associations":
         entries = data if isinstance(data, list) else data.get("news", [])
         for entry in entries[:5]:
             title = entry.get("title") or entry.get("heading") or ""
             date_ = entry.get("date", "")
             if title:
-                items.append((date_[:10] if date_ else "—", title[:80]))
+                items.append((date_[:10] if date_ else "-", title[:80]))
     else:
         # Generic: show scalar values first, then regulatory_text snippets as fallback
         for k, v in data.items():

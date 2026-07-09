@@ -272,7 +272,7 @@ def get_feed_summary_text(result: FeedResult, max_items: int = 30) -> str:
 
     lines = [f"NEWS INTELLIGENCE ({result.total_headlines} total headlines)\n"]
     for item in sorted_items:
-        marker = "🔴" if item.classification == "THREAT" else "🟢" if item.classification == "OPPORTUNITY" else "⚪"
+        marker = "[THREAT]" if item.classification == "THREAT" else "[OPP]" if item.classification == "OPPORTUNITY" else "[INFO]"
         lines.append(
             f"{marker} [{item.feed_label}] {item.title} | {item.published[:10] if item.published else 'recent'}"
         )

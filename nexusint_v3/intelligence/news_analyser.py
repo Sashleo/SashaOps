@@ -102,7 +102,7 @@ and produce a brief specifically for "{business_name}"{industry_context} operati
 NEWS HEADLINES:
 {news_text}
 
-CLASSIFICATION RULES — apply strictly:
+CLASSIFICATION RULES - apply strictly:
 - THREAT: Only if the news could directly reduce revenues, increase costs, restrict operations,
   or damage competitive position for THIS specific business or sector. Examples: competitor wins
   major contract, regulation banning their product, currency depreciation if they import inputs,
@@ -147,7 +147,7 @@ Respond with ONLY this JSON object (no markdown, no code blocks, no extra text):
         brief.analyst_note        = parsed.get("analyst_note", "")
 
     except (json.JSONDecodeError, TypeError, ValueError):
-        brief.analyst_note = "News analysis summary unavailable — check Gemini API."
+        brief.analyst_note = "News analysis summary unavailable - check Gemini API."
         log.warning("News analyser returned non-JSON", business=business_name)
     except Exception as e:
         brief.analyst_note = f"News analysis incomplete: {str(e)[:120]}"
@@ -201,9 +201,9 @@ def build_local_brief(
     for it in relevant[:8]:
         note = it.title
         if getattr(it, "impact", None) == 1:
-            note += "  (＋ tailwind)"; pos += 1
+            note += "  (tailwind)"; pos += 1
         elif getattr(it, "impact", None) == -1:
-            note += "  (－ headwind)"; neg += 1
+            note += "  (headwind)"; neg += 1
         devs.append(note)
     brief.critical_developments = devs
     brief.raw_headlines = [it.title for it in ranked[:10] if it.title]
@@ -264,14 +264,14 @@ def format_brief_for_prompt(brief: NewsIntelligenceBrief) -> str:
         for t in brief.top_threats[:3]:
             mag = t.get("magnitude", 0) if isinstance(t, dict) else 0
             title = t.get("title", t) if isinstance(t, dict) else str(t)
-            lines.append(f"  🔴 [{mag}/10] {title}")
+            lines.append(f"  [THREAT {mag}/10] {title}")
 
     if brief.top_opportunities:
         lines.append("\nTop Opportunities:")
         for o in brief.top_opportunities[:3]:
             mag = o.get("magnitude", 0) if isinstance(o, dict) else 0
             title = o.get("title", o) if isinstance(o, dict) else str(o)
-            lines.append(f"  🟢 [{mag}/10] {title}")
+            lines.append(f"  [OPPORTUNITY {mag}/10] {title}")
 
     if brief.analyst_note:
         lines.append(f"\nAnalyst Note: {brief.analyst_note}")

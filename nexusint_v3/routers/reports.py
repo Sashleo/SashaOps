@@ -43,7 +43,7 @@ def _get_client_key(client_id: str) -> bytes:
     db  = get_db()
     row = db.execute("SELECT master_salt FROM users LIMIT 1").fetchone()
     if not row or not row["master_salt"]:
-        raise RuntimeError("No master salt found — database may be uninitialised")
+        raise RuntimeError("No master salt found - database may be uninitialised")
 
     master_key = derive_master_key(settings.DB_MASTER_PASSWORD, bytes(row["master_salt"]))
 
@@ -59,7 +59,7 @@ def _get_client_key(client_id: str) -> bytes:
 
 def _error_page(title: str, detail: str) -> str:
     return f"""<!DOCTYPE html><html><head>
-<meta charset="utf-8"><title>Error — SashaOps</title>
+<meta charset="utf-8"><title>Error - SashaOps</title>
 <style>body{{font-family:system-ui,sans-serif;background:#0d0d0d;color:#ccc;display:flex;
   align-items:center;justify-content:center;min-height:100vh;margin:0}}
 .box{{max-width:520px;padding:32px;border:1px solid #333;border-radius:8px;background:#141414}}
@@ -69,7 +69,7 @@ a{{padding:8px 16px;border-radius:6px;text-decoration:none;font-size:0.9em}}
 .back{{background:#222;color:#ccc;border:1px solid #444}}
 .regen{{background:#00c870;color:#000;font-weight:600}}</style></head>
 <body><div class="box">
-<h2>⚠ {title}</h2><p>{detail}</p>
+<h2>{title}</h2><p>{detail}</p>
 <div class="links">
 <a class="back" href="/reports">← Back to Reports</a>
 <a class="regen" href="/intelligence">Regenerate Report →</a>
@@ -102,7 +102,7 @@ async def download_pdf(request: Request, report_id: str):
     active_client = sidebar["active_client"]
 
     if not active_client:
-        raise HTTPException(403, "No active client — select a client first")
+        raise HTTPException(403, "No active client - select a client first")
 
     record = get_report(report_id)
     if not record or not record.get("pdf_path"):
@@ -111,7 +111,7 @@ async def download_pdf(request: Request, report_id: str):
     # 1. Client ownership check
     if record["client_id"] != active_client["id"]:
         log.warning(
-            "Report access denied — wrong client",
+            "Report access denied - wrong client",
             report_id=report_id,
             owner=record["client_id"],
             requester=active_client["id"],
@@ -129,7 +129,7 @@ async def download_pdf(request: Request, report_id: str):
     if pdf_bytes is None:
         return HTMLResponse(
             _error_page("Report file could not be decrypted",
-                        "The encryption key does not match — this can happen if the "
+                        "The encryption key does not match - this can happen if the "
                         "master password changed after the report was generated. "
                         "Regenerate the report from the Intelligence page."),
             status_code=409,
@@ -148,7 +148,7 @@ async def download_pdf(request: Request, report_id: str):
                 log.info("Report signature verified", report_id=report_id)
             else:
                 sig_header = "invalid"
-                log.warning("Report signature mismatch — serving file (AES-GCM confirms integrity)",
+                log.warning("Report signature mismatch - serving file (AES-GCM confirms integrity)",
                             report_id=report_id, msg=msg)
         else:
             log.warning("Signature file missing", report_id=report_id, path=record["signature_path"])
@@ -170,7 +170,7 @@ async def download_docx(request: Request, report_id: str):
     active_client = sidebar["active_client"]
 
     if not active_client:
-        raise HTTPException(403, "No active client — select a client first")
+        raise HTTPException(403, "No active client - select a client first")
 
     record = get_report(report_id)
     if not record or not record.get("docx_path"):
@@ -179,7 +179,7 @@ async def download_docx(request: Request, report_id: str):
     # 1. Client ownership check
     if record["client_id"] != active_client["id"]:
         log.warning(
-            "Report access denied — wrong client",
+            "Report access denied - wrong client",
             report_id=report_id,
             owner=record["client_id"],
             requester=active_client["id"],

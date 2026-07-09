@@ -27,7 +27,7 @@ _env = Environment(autoescape=False)
 # Per-module banner intentionally blank — the "computed locally" note is stated once
 # in the report footer/methodology instead of repeated on every section.
 _BANNER_LOCAL = ""
-_BANNER_AI    = "_✨ AI-enhanced_"
+_BANNER_AI    = "_AI-enhanced_"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -69,7 +69,7 @@ def render_local_module(
         )
     except Exception as _e:
         return (
-            f"## {mod_id.title()} — Local Analysis\n\n"
+            f"## {mod_id.title()} - Local Analysis\n\n"
             f"{_BANNER_LOCAL}\n\n"
             f"Analysis compiled from available local data sources.\n\n"
             f"_Note: {str(_e)[:120]}_"
@@ -90,7 +90,7 @@ def _raw_float(v: Any) -> Optional[float]:
         return float(v)
     if isinstance(v, str):
         s = v.replace("%", "").replace(",", "").replace("M", "").replace("B", "").strip()
-        if s in ("N/A", "—", "", "None"):
+        if s in ("N/A", "-", "", "None"):
             return None
         try:
             f = float(s)
@@ -129,15 +129,15 @@ def _num(v: Any, decimals: int = 1, suffix: str = "") -> str:
 
 
 def _signal(v: Any, good_above: float, warn_above: float) -> str:
-    """Return traffic-light emoji. Handles float or pre-formatted string."""
+    """Return a plain-text traffic-light signal. Handles float or pre-formatted string."""
     f = _raw_float(v)
     if f is None:
-        return "—"
+        return "N/A"
     if f >= good_above:
-        return "✅"
+        return "OK"
     if f >= warn_above:
-        return "⚠️"
-    return "🔴"
+        return "WATCH"
+    return "RISK"
 
 
 def _lines_from_text(text: str, max_lines: int = 6) -> list[str]:
@@ -159,8 +159,8 @@ def _news_bullets(data_summary: Any, max_lines: int = 8) -> list[str]:
     out: list[str] = []
     for raw in brief.split("\n"):
         s = raw.strip()
-        if s.startswith("•") or s.startswith("- ") or s.startswith("🔴") or s.startswith("🟢"):
-            cleaned = s.lstrip("•-🔴🟢 ").strip()
+        if s.startswith("•") or s.startswith("- ") or s.startswith("[THREAT") or s.startswith("[OPPORTUNITY"):
+            cleaned = s.lstrip("•- ").strip()
             if cleaned:
                 out.append(cleaned)
         if len(out) >= max_lines:
@@ -191,10 +191,10 @@ def _render_financial(
 ) -> str:
     if not local_result:
         return (
-            f"## Financial Analysis — {business_name}\n\n"
+            f"## Financial Analysis - {business_name}\n\n"
             f"{_source_line('PSX financial statements')}\n\n"
             + _needs("Financial Analysis",
-                     "balance sheet + income statement — upload the annual report PDF "
+                     "balance sheet + income statement - upload the annual report PDF "
                      "or ensure PSX financials are scraped for this ticker")
         )
     try:
@@ -215,7 +215,7 @@ def _render_financial(
         _sec = (_prof.get("sector") if isinstance(_prof, dict) else "") or industry_tag or sector
         signals = get_financial_signals_context(_sec)
         if signals:
-            report += "\n\n### Sector Context — what to watch\n"
+            report += "\n\n### Sector Context - what to watch\n"
             report += "\n".join(f"- {s}" for s in signals)
     except Exception:
         pass
@@ -236,7 +236,7 @@ def _render_valuation(
 ) -> str:
     if not local_result:
         return (
-            f"## Valuation — {business_name}\n\n"
+            f"## Valuation - {business_name}\n\n"
             f"{_BANNER_LOCAL}\n\n"
             f"No financial data available. Cannot compute DCF or fair value estimates."
         )
@@ -260,7 +260,7 @@ def _render_valuation(
     price_f   = _raw_float(price)
 
     lines = [
-        f"## Valuation — {company}" + (f" ({ticker})" if ticker else ""),
+        f"## Valuation - {company}" + (f" ({ticker})" if ticker else ""),
         "",
         _source_line("PSX market, financial statements and macro data"),
         "",
@@ -273,17 +273,17 @@ def _render_valuation(
             "",
             "| Scenario | Fair Value (PKR mn) | WACC |",
             "|----------|---------------------|------|",
-            f"| 🐻 Bear  | {_num(bear_val, 0)}  | {_pct(wacc_f) if wacc_f is not None else 'N/A'} |",
-            f"| 📊 Base  | {_num(base_val, 0)}  | {_pct(wacc_f) if wacc_f is not None else 'N/A'} |",
-            f"| 🐂 Bull  | {_num(bull_val, 0)}  | {_pct(wacc_f) if wacc_f is not None else 'N/A'} |",
+            f"| Bear  | {_num(bear_val, 0)}  | {_pct(wacc_f) if wacc_f is not None else 'N/A'} |",
+            f"| Base  | {_num(base_val, 0)}  | {_pct(wacc_f) if wacc_f is not None else 'N/A'} |",
+            f"| Bull  | {_num(bull_val, 0)}  | {_pct(wacc_f) if wacc_f is not None else 'N/A'} |",
             "",
         ]
         if price_f and base_f:
             premium = (price_f - base_f) / base_f * 100
             if premium > 15:
-                lines.append(f"**Current price {_num(price, 2)} PKR trades {abs(premium):.0f}% above base fair value** — potentially stretched.")
+                lines.append(f"**Current price {_num(price, 2)} PKR trades {abs(premium):.0f}% above base fair value** - potentially stretched.")
             elif premium < -15:
-                lines.append(f"**Current price {_num(price, 2)} PKR trades {abs(premium):.0f}% below base fair value** — potential upside.")
+                lines.append(f"**Current price {_num(price, 2)} PKR trades {abs(premium):.0f}% below base fair value** - potential upside.")
             else:
                 lines.append(f"Current price {_num(price, 2)} PKR is near base-case fair value ({premium:+.1f}%).")
             lines.append("")
@@ -306,7 +306,7 @@ def _render_valuation(
         lines.append("|------|-------------|------|------------|")
         for proj in projs:
             lines.append(
-                f"| {proj.get('year','—')} "
+                f"| {proj.get('year','-')} "
                 f"| {_num(proj.get('conservative'), 0)} "
                 f"| {_num(proj.get('base'), 0)} "
                 f"| {_num(proj.get('optimistic'), 0)} |"
@@ -330,7 +330,7 @@ def _render_sentiment(
     **_kw,
 ) -> str:
     lines = [
-        f"## Market Sentiment — {business_name}",
+        f"## Market Sentiment - {business_name}",
         "",
         _source_line("PSX market, financial statements and macro data"),
         "",
@@ -341,7 +341,7 @@ def _render_sentiment(
     if sentiment_scores and sentiment_scores.get("kind") == "announcement_types":
         n = sentiment_scores.get("n", 0)
         lines += [
-            f"### PSX Announcements — type breakdown ({n} filings)", "",
+            f"### PSX Announcements - type breakdown ({n} filings)", "",
             f"**{sentiment_scores.get('summary', 'no announcements')}**", "",
         ]
         top = sentiment_scores.get("top", [])
@@ -440,16 +440,16 @@ def _render_economy(
             lines += ["### Rate Sensitivity", ""]
             if debt_eq_f is not None:
                 if debt_eq_f > 2.0:
-                    lines.append(f"- **High leverage (D/E {debt_eq_f:.2f})** — rising SBP policy rate materially increases financing cost.")
+                    lines.append(f"- **High leverage (D/E {debt_eq_f:.2f})** - rising SBP policy rate materially increases financing cost.")
                 elif debt_eq_f > 1.0:
-                    lines.append(f"- Moderate leverage (D/E {debt_eq_f:.2f}) — interest rate changes have material but manageable impact.")
+                    lines.append(f"- Moderate leverage (D/E {debt_eq_f:.2f}) - interest rate changes have material but manageable impact.")
                 else:
-                    lines.append(f"- Low leverage (D/E {debt_eq_f:.2f}) — limited sensitivity to interest rate changes.")
+                    lines.append(f"- Low leverage (D/E {debt_eq_f:.2f}) - limited sensitivity to interest rate changes.")
             if ic_f is not None:
                 if ic_f < 1.5:
-                    lines.append(f"- ⚠️ **Weak interest coverage ({ic_f:.1f}×)** — debt service at risk if rates rise further.")
+                    lines.append(f"- **Weak interest coverage ({ic_f:.1f}x)** - debt service at risk if rates rise further.")
                 elif ic_f > 5:
-                    lines.append(f"- Strong interest coverage ({ic_f:.1f}×) — comfortable debt service margin.")
+                    lines.append(f"- Strong interest coverage ({ic_f:.1f}×) - comfortable debt service margin.")
             lines.append("")
 
     if not forex_text and not index_text and not news_brief:
@@ -470,7 +470,7 @@ def _render_competitors(
     **_kw,
 ) -> str:
     lines = [
-        f"## Competitive Landscape — {business_name}",
+        f"## Competitive Landscape - {business_name}",
         "",
         _source_line("PSX market, financial statements and macro data"),
         "",
@@ -520,12 +520,12 @@ def _render_competitors(
         z      = local_result.get("altman_z")
         lines += [
             "",
-            f"### {business_name} — Position Snapshot",
+            f"### {business_name} - Position Snapshot",
             "",
             f"| Metric | Value | Signal |",
             f"|--------|-------|--------|",
             f"| Health Score | {_num(health, 1)}/10 | {_signal(health, 7.0, 5.0)} |",
-            f"| Altman Z-Score | {_num(z, 2) if z else 'N/A'} | {'✅' if z and z >= 2.99 else '⚠️' if z and z >= 1.81 else '—'} |",
+            f"| Altman Z-Score | {_num(z, 2) if z else 'N/A'} | {'OK' if z and z >= 2.99 else 'WATCH' if z and z >= 1.81 else 'RISK' if z else 'N/A'} |",
             "",
         ]
 
@@ -580,9 +580,9 @@ def _leadership_governance_section(local_result, data_summary, business_name) ->
 
     if ticker:
         cadence = ("active" if ann_count >= 20 else "standard" if ann_count >= 5 else "limited")
-        lines.append(f"- Disclosure cadence: {ann_count} PSX announcement(s) on record — {cadence} investor communication.")
+        lines.append(f"- Disclosure cadence: {ann_count} PSX announcement(s) on record - {cadence} investor communication.")
     else:
-        lines.append("- Board/executive detail requires uploaded filings — not available for unlisted companies without documents.")
+        lines.append("- Board/executive detail requires uploaded filings - not available for unlisted companies without documents.")
     lines.append("")
     return lines
 
@@ -596,7 +596,7 @@ def _render_overview(
     **_kw,
 ) -> str:
     lines = [
-        f"## Business Overview — {business_name}",
+        f"## Business Overview - {business_name}",
         "",
         _source_line("PSX profile + financial statements + company disclosures"),
         "",
@@ -627,7 +627,7 @@ def _render_overview(
         z       = local_result.get("altman_z")
 
         lines += [
-            f"### Financial Health — {company}" + (f" ({ticker})" if ticker else ""),
+            f"### Financial Health - {company}" + (f" ({ticker})" if ticker else ""),
             "",
             f"| Indicator | Value |",
             f"|-----------|-------|",
@@ -658,28 +658,28 @@ def _render_overview(
             if gm_f >= 0.30:
                 strengths.append(f"Healthy gross margins ({gm_f:.1%}) suggest pricing power")
             elif gm_f < 0.10:
-                weaknesses.append(f"Thin gross margins ({gm_f:.1%}) — limited buffer for cost increases")
+                weaknesses.append(f"Thin gross margins ({gm_f:.1%}) - limited buffer for cost increases")
 
         roe_f = _raw_float(roe)
         if roe_f is not None:
             if roe_f >= 0.20:
-                strengths.append(f"Strong ROE ({roe_f:.1%}) — efficient use of shareholder capital")
+                strengths.append(f"Strong ROE ({roe_f:.1%}) - efficient use of shareholder capital")
             elif roe_f < 0.08:
-                weaknesses.append(f"Low ROE ({roe_f:.1%}) — suboptimal capital utilisation")
+                weaknesses.append(f"Low ROE ({roe_f:.1%}) - suboptimal capital utilisation")
 
         de_f = _raw_float(de)
         if de_f is not None:
             if de_f <= 0.5:
-                strengths.append(f"Conservative leverage (D/E {de_f:.2f}) — financial flexibility")
+                strengths.append(f"Conservative leverage (D/E {de_f:.2f}) - financial flexibility")
             elif de_f >= 2.0:
-                threats.append(f"High leverage (D/E {de_f:.2f}) — elevated financial risk")
+                threats.append(f"High leverage (D/E {de_f:.2f}) - elevated financial risk")
 
         z_f = _raw_float(z)
         if z_f is not None:
             if z_f >= 2.99:
                 strengths.append(f"Altman Z-Score {z_f:.2f} in safe zone")
             elif z_f < 1.81:
-                threats.append(f"Altman Z-Score {z_f:.2f} in distress zone — monitor closely")
+                threats.append(f"Altman Z-Score {z_f:.2f} in distress zone - monitor closely")
 
         # Revenue growth
         rev_growth = local_result.get("revenue_growth")
@@ -727,7 +727,7 @@ def _render_marketing(
     **_kw,
 ) -> str:
     lines = [
-        f"## Digital Presence — {business_name}",
+        f"## Digital Presence - {business_name}",
         "",
         _source_line("PSX market, financial statements and macro data"),
         "",
@@ -813,12 +813,12 @@ def _render_country(
     lines += [
         "### Pakistan Regulatory Landscape",
         "",
-        "- **SECP** — Securities and Exchange Commission regulates listed companies, "
+        "- **SECP** - Securities and Exchange Commission regulates listed companies, "
         "non-banking finance, insurance",
-        "- **SBP** — State Bank of Pakistan regulates banking sector and monetary policy",
-        "- **FBR** — Federal Board of Revenue administers tax collection (income, sales, customs)",
-        "- **OGRA / NEPRA** — Sector-specific regulators for oil/gas and power",
-        "- **PSX** — Listed companies subject to disclosure and corporate governance requirements",
+        "- **SBP** - State Bank of Pakistan regulates banking sector and monetary policy",
+        "- **FBR** - Federal Board of Revenue administers tax collection (income, sales, customs)",
+        "- **OGRA / NEPRA** - Sector-specific regulators for oil/gas and power",
+        "- **PSX** - Listed companies subject to disclosure and corporate governance requirements",
         "",
         "_Regulatory risk details require document uploads or government scraper data._",
     ]
@@ -835,7 +835,7 @@ def _render_supplychain(
     **_kw,
 ) -> str:
     lines = [
-        f"## Supply Chain Analysis — {business_name}",
+        f"## Supply Chain Analysis - {business_name}",
         "",
         _source_line("PSX market, financial statements and macro data"),
         "",
@@ -900,7 +900,7 @@ def _render_scaling(
     **_kw,
 ) -> str:
     lines = [
-        f"## Scaling & Growth Potential — {business_name}",
+        f"## Scaling & Growth Potential - {business_name}",
         "",
         _source_line("PSX market, financial statements and macro data"),
         "",
@@ -928,13 +928,13 @@ def _render_scaling(
         rev_growth_f = _raw_float(rev_growth)
         if rev_growth_f is not None:
             if rev_growth_f >= 0.20:
-                lines.append("🚀 **High growth trajectory** — above 20% YoY growth signals strong scaling momentum.")
+                lines.append("**High growth trajectory** - above 20% YoY growth signals strong scaling momentum.")
             elif rev_growth_f >= 0.10:
-                lines.append("📈 **Healthy growth** — double-digit expansion, sustainable scaling underway.")
+                lines.append("**Healthy growth** - double-digit expansion, sustainable scaling underway.")
             elif rev_growth_f >= 0:
-                lines.append("📊 **Modest growth** — single-digit expansion; scaling requires efficiency improvements.")
+                lines.append("**Modest growth** - single-digit expansion; scaling requires efficiency improvements.")
             else:
-                lines.append("⚠️ **Revenue contraction** — scaling strategy should focus on retention before expansion.")
+                lines.append("**Revenue contraction** - scaling strategy should focus on retention before expansion.")
             lines.append("")
 
         if projs:
@@ -943,7 +943,7 @@ def _render_scaling(
             lines.append("|------|-------------|------|------------|")
             for p in projs:
                 lines.append(
-                    f"| {p.get('year','—')} "
+                    f"| {p.get('year','-')} "
                     f"| {_num(p.get('conservative'), 0)} "
                     f"| {_num(p.get('base'), 0)} "
                     f"| {_num(p.get('optimistic'), 0)} |"
@@ -1019,7 +1019,7 @@ def _render_generic(
     **_kw,
 ) -> str:
     lines = [
-        f"## Analysis — {business_name}",
+        f"## Analysis - {business_name}",
         "",
         _source_line("PSX market, financial statements and macro data"),
         "",
@@ -1080,8 +1080,8 @@ SECTOR_REGULATORS = {
 }
 
 DIGITAL_MATURITY_BY_SECTOR = {
-    "tech":       "Digital maturity is the core business model — revenue per employee, contract pipeline and cloud/SaaS mix are the key metrics.",
-    "banking":    "Digital banking adoption is the key competitive differentiator — mobile banking, digital payments and API/open banking are sector priorities.",
+    "tech":       "Digital maturity is the core business model - revenue per employee, contract pipeline and cloud/SaaS mix are the key metrics.",
+    "banking":    "Digital banking adoption is the key competitive differentiator - mobile banking, digital payments and API/open banking are sector priorities.",
     "pharma":     "Digital maturity in pharma centres on supply-chain traceability, regulatory e-submissions (DRAP) and digital detailing to prescribers.",
     "cement":     "Cement digital maturity typically centres on plant automation, logistics/fleet optimisation and dealer-management systems.",
     "textile":    "Export textile firms increasingly need digital traceability for EU/US sustainability compliance, plus ERP-driven order management.",
@@ -1117,13 +1117,13 @@ def _sector_peer_count(sector: str) -> int:
 def _news_signals(data_summary):
     """(tailwind_count, headwind_count, top_headline) parsed from the local brief."""
     brief = getattr(data_summary, "news_brief", "") or ""
-    tw = brief.count("＋ tailwind") + brief.count("(+ tailwind)")
-    hw = brief.count("－ headwind") + brief.count("(- headwind)")
+    tw = brief.count("(tailwind)")
+    hw = brief.count("(headwind)")
     top = ""
     _skip = ("news intelligence", "region", "market sentiment", "key themes",
              "analyst", "recent headlines", "critical developments")
     for line in brief.split("\n"):
-        s = line.strip().lstrip("•-🔴🟢 ").strip()
+        s = line.strip().lstrip("- ").strip()
         if s and not any(s.lower().startswith(p) for p in _skip):
             top = s.split("  (")[0].strip()
             break
@@ -1193,7 +1193,7 @@ def _news_signal_line(c: dict) -> str:
 def _render_pestle(local_result, data_summary, business_name, sector="", industry_tag="", **_kw):
     c = _module_ctx(local_result, data_summary, business_name, sector, industry_tag)
     reg, risk = SECTOR_REGULATORS.get(c["sector"], ("SECP", "standard corporate governance"))
-    L = [f"## PESTLE Analysis — {business_name}", "",
+    L = [f"## PESTLE Analysis - {business_name}", "",
          _source_line("SBP macro data + PBS statistics + static compliance rules"), ""]
 
     # Political
@@ -1203,7 +1203,7 @@ def _render_pestle(local_result, data_summary, business_name, sector="", industr
     elif sbp > 15:
         pol = f"Highly restrictive monetary environment (SBP rate {sbp:g}%) limits access to affordable credit; floating-rate borrowers face a heavy interest burden."
     elif sbp > 10:
-        pol = f"Elevated policy rate ({sbp:g}%) constrains borrowing costs — any easing cycle would give meaningful relief to leveraged firms."
+        pol = f"Elevated policy rate ({sbp:g}%) constrains borrowing costs - any easing cycle would give meaningful relief to leveraged firms."
     elif sbp > 6:
         pol = f"Moderately accommodative policy ({sbp:g}%); credit conditions support operational financing."
     else:
@@ -1263,10 +1263,10 @@ def _esg_env_line(sector: str) -> str:
 def _render_porters(local_result, data_summary, business_name, sector="", industry_tag="", **_kw):
     c = _module_ctx(local_result, data_summary, business_name, sector, industry_tag)
     reg, _risk = SECTOR_REGULATORS.get(c["sector"], ("SECP", ""))
-    L = [f"## Porter's Five Forces — {business_name}", ""]
+    L = [f"## Porter's Five Forces - {business_name}", ""]
 
     gm = c["gross_margin"]
-    if gm is None:      sup = "Gross-margin data unavailable — supplier power cannot be inferred from financials."
+    if gm is None:      sup = "Gross-margin data unavailable - supplier power cannot be inferred from financials."
     elif gm >= 40:      sup = f"Gross margin of {gm:.1f}% indicates manageable input-cost exposure and intact pricing power over suppliers."
     elif gm >= 25:      sup = f"Moderate gross margin ({gm:.1f}%) suggests balanced supplier dynamics; input-cost movements warrant monitoring."
     elif gm >= 10:      sup = f"Compressed gross margin ({gm:.1f}%) signals meaningful supplier pricing power or raw-material vulnerability."
@@ -1274,14 +1274,14 @@ def _render_porters(local_result, data_summary, business_name, sector="", indust
     L += ["### Supplier Power", sup, ""]
 
     nm = c["net_margin"]
-    if nm is None:      buy = "Net-margin data unavailable — buyer power cannot be inferred."
+    if nm is None:      buy = "Net-margin data unavailable - buyer power cannot be inferred."
     elif nm >= 15:      buy = f"Net margin of {nm:.1f}% suggests retained pricing authority with customers; assess revenue concentration via the annual report."
-    elif nm >= 8:       buy = f"Adequate net margin ({nm:.1f}%) indicates moderate buyer influence — competitive pricing pressure exists but is manageable."
+    elif nm >= 8:       buy = f"Adequate net margin ({nm:.1f}%) indicates moderate buyer influence - competitive pricing pressure exists but is manageable."
     else:               buy = f"Low net margin ({nm:.1f}%) may reflect significant buyer power or an inability to pass cost increases downstream."
     L += ["### Buyer Power", buy, ""]
 
     pc = c["peer_count"]
-    if pc >= 10:        riv = f"The sector has {pc} listed peers — high competitive intensity; differentiation and cost efficiency are critical."
+    if pc >= 10:        riv = f"The sector has {pc} listed peers - high competitive intensity; differentiation and cost efficiency are critical."
     elif pc >= 5:       riv = f"Moderate competitive landscape with {pc} listed peers."
     elif pc > 0:        riv = f"Limited listed competition ({pc} peers) may indicate entry barriers or niche positioning."
     else:               riv = "Peer set could not be resolved from PSX data."
@@ -1338,13 +1338,13 @@ def _render_regulatory(local_result, data_summary, business_name, sector="", ind
         crit = [s for s in signals if s.get("severity") == "critical"]
         high = [s for s in signals if s.get("severity") == "high"]
         med  = [s for s in signals if s.get("severity") == "medium"]
-        out.append("### ⚠ Compliance Signals Detected")
+        out.append("### Compliance Signals Detected")
         for s in crit:
-            out.append(f"- ⛔ **CRITICAL — {s['signal']}** · {(s.get('context') or s.get('text','') )[:150]}")
+            out.append(f"- **CRITICAL - {s['signal']}**: {(s.get('context') or s.get('text','') )[:150]}")
         for s in high:
-            out.append(f"- ⚠ **HIGH — {s['signal']}** · {(s.get('context') or s.get('text',''))[:120]}")
+            out.append(f"- **HIGH - {s['signal']}**: {(s.get('context') or s.get('text',''))[:120]}")
         for s in med:
-            out.append(f"- ⚡ Medium — {s['signal']}")
+            out.append(f"- Medium - {s['signal']}")
         out.append("")
 
     out.append(get_compliance_checklist_text(sector_str, business_name, is_listed=is_listed))
@@ -1353,7 +1353,7 @@ def _render_regulatory(local_result, data_summary, business_name, sector="", ind
 
 def _render_management(local_result, data_summary, business_name, sector="", industry_tag="", **_kw):
     c = _module_ctx(local_result, data_summary, business_name, sector, industry_tag)
-    L = [f"## Management Quality — {business_name}", "",
+    L = [f"## Management Quality - {business_name}", "",
          "_Financial signals used as proxies for execution quality._", ""]
     pts = []
     if c["roe"] is not None and c["roe"] > 20:
@@ -1367,7 +1367,7 @@ def _render_management(local_result, data_summary, business_name, sector="", ind
     if c["health"] is not None and c["health"] < 5:
         pts.append(f"Overall financial-health score of {c['health']:.1f}/10 raises questions about strategic execution.")
     if not pts:
-        pts.append("Insufficient computed ratios to infer management quality — upload the annual report to enable a fuller read.")
+        pts.append("Insufficient computed ratios to infer management quality - upload the annual report to enable a fuller read.")
     L += [f"- {p}" for p in pts]
     L += ["", _news_signal_line(c)]
     return "\n".join(L)
@@ -1376,8 +1376,8 @@ def _render_management(local_result, data_summary, business_name, sector="", ind
 def _render_digital(local_result, data_summary, business_name, sector="", industry_tag="", **_kw):
     c = _module_ctx(local_result, data_summary, business_name, sector, industry_tag)
     ctx = DIGITAL_MATURITY_BY_SECTOR.get(
-        c["sector"], "Digital-maturity assessment requires website/operational data — upload company materials to enable.")
-    L = [f"## Digital Maturity — {business_name}", "", ctx, ""]
+        c["sector"], "Digital-maturity assessment requires website/operational data - upload company materials to enable.")
+    L = [f"## Digital Maturity - {business_name}", "", ctx, ""]
     website = getattr(data_summary, "website_snippet", "") or ""
     if website:
         L += ["### Observed digital presence", ""]
@@ -1389,7 +1389,7 @@ def _render_digital(local_result, data_summary, business_name, sector="", indust
 
 def _render_esg(local_result, data_summary, business_name, sector="", industry_tag="", **_kw):
     c = _module_ctx(local_result, data_summary, business_name, sector, industry_tag)
-    L = [f"## ESG Assessment — {business_name}", "",
+    L = [f"## ESG Assessment - {business_name}", "",
          "### Environmental", _esg_env_line(c["sector"]), ""]
     if c["health"] is not None and c["health"] >= 7:
         soc = f"Financial-strength score of {c['health']:.1f}/10 suggests capacity to invest in workforce and community programmes."
@@ -1411,7 +1411,7 @@ def _render_bmc(local_result, data_summary, business_name, sector="", industry_t
     elif gm > 50:       rev_model = "High-margin product/service mix."
     elif gm > 30:       rev_model = "Mixed product and service revenue."
     else:               rev_model = "Volume-driven, lower-margin revenue model."
-    L = [f"## Business Model Canvas — {business_name}", "",
+    L = [f"## Business Model Canvas - {business_name}", "",
          "### Value Proposition",
          f"As a {c['sector'] or 'listed'} company, core value delivery centres on "
          + {"cement": "reliable bulk supply, distribution reach and cost leadership",
@@ -1442,12 +1442,12 @@ def _render_scenario(local_result, data_summary, business_name, sector="", indus
     sector_bear = {"cement": " PSDP cuts and higher coal prices squeeze margins.",
                    "pharma": " Rupee weakness raises imported-API costs.",
                    "banking": " Credit growth decelerates and NPLs tick up."}.get(c["sector"], "")
-    L = [f"## Scenario Planning — {business_name}", "",
+    L = [f"## Scenario Planning - {business_name}", "",
          "### Base Case", base, "",
          "### Bull Case",
-         "A 200–300bps SBP easing cycle boosts margins; GDP growth accelerates and sector demand expands — revenue growth runs ~15–20% above base." + sector_bull, "",
+         "A 200–300bps SBP easing cycle boosts margins; GDP growth accelerates and sector demand expands - revenue growth runs ~15–20% above base." + sector_bull, "",
          "### Bear Case",
-         "The policy rate is held or raised, currency depreciation adds import-cost pressure and energy/circular-debt costs rise — growth stalls and margins compress ~200–400bps." + sector_bear,
+         "The policy rate is held or raised, currency depreciation adds import-cost pressure and energy/circular-debt costs rise - growth stalls and margins compress ~200–400bps." + sector_bear,
          "", _news_signal_line(c)]
     return "\n".join(L)
 

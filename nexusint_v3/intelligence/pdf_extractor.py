@@ -1,0 +1,205 @@
+"""
+intelligence/pdf_extractor.py — Financial-statement extraction from PDF bytes.
+
+Chain-of-responsibility: each extractor exposes the same interface and is tried in
+order until one yields at least 3 financial line items. This makes scanned PSX
+reports (no text layer, Creator "Scan Assistant") extractable via OCR while keeping
+the fast pdfplumber path for digital PDFs.
+
+    extract(pdf_bytes) -> {"financials": {...}, "method": str, "confidence": 0-1}
+                          (empty financials on failure)
+
+All parsing reuses psx_report_parser._parse_financials + _LABELS so label coverage
+stays in one place. OCR is CPU-blocking; callers already run this inside an executor
+(stage1/stage2/markets), so no async is added here.
+"""
+
+from __future__ import annotations
+
+import io
+import os
+
+import structlog
+
+from intelligence.psx_report_parser import (
+    _parse_financials, MAX_PAGES, OCR_MAX_PAGES, OCR_DPI,
+)
+
+log = structlog.get_logger()
+
+_MIN_FIELDS = 3
+
+
+def _matched(fin: dict) -> int:
+    return sum(1 for v in (fin or {}).values() if v is not None)
+
+
+class PdfplumberTablesExtractor:
+    """Digital PDFs: parse pdfplumber tables (fastest, highest confidence)."""
+    method = "pdfplumber_tables"
+    confidence = 0.9
+
+    def extract(self, pdf_bytes: bytes) -> dict:
+        import pdfplumber
+        lines: list[str] = []
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            for page in pdf.pages[:MAX_PAGES]:
+                for table in (page.extract_tables() or []):
+                    for row in table:
+                        cells = [str(c).strip() for c in row if c is not None]
+                        if cells:
+                            lines.append(" ".join(cells))
+        fin = _parse_financials("\n".join(lines))
+        return {"financials": fin, "method": self.method, "confidence": self.confidence}
+
+
+class PdfplumberTextExtractor:
+    """Digital PDFs without clean tables: parse the text layer."""
+    method = "pdfplumber_text"
+    confidence = 0.7
+
+    def extract(self, pdf_bytes: bytes) -> dict:
+        import pdfplumber
+        chunks: list[str] = []
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            for page in pdf.pages[:MAX_PAGES]:
+                t = page.extract_text() or ""
+                if t:
+                    chunks.append(t)
+        fin = _parse_financials("\n".join(chunks))
+        return {"financials": fin, "method": self.method, "confidence": self.confidence}
+
+
+def _pdf_to_images(pdf_bytes: bytes, dpi: int):
+    from pdf2image import convert_from_bytes
+    return convert_from_bytes(pdf_bytes, dpi=dpi, first_page=1, last_page=OCR_MAX_PAGES, fmt="png")
+
+
+class TesseractRawExtractor:
+    """Scanned PDFs: render at 200 DPI and OCR each page with Tesseract."""
+    method = "tesseract_raw"
+    confidence = 0.5
+
+    def extract(self, pdf_bytes: bytes) -> dict:
+        import pytesseract
+        images = _pdf_to_images(pdf_bytes, OCR_DPI)
+        parts = []
+        for img in images:
+            try:
+                parts.append(pytesseract.image_to_string(img) or "")
+            except Exception as e:
+                log.info("OCR page failed", error=str(e)[:80])
+        text = "\n".join(parts)
+        log.info("Scanned PDF detected - running OCR", method=self.method,
+                 pages=len(images), chars=len(text))
+        return {"financials": _parse_financials(text), "method": self.method,
+                "confidence": self.confidence}
+
+
+class TesseractPreprocessedExtractor:
+    """Scanned PDFs with poor quality: opencv preprocess (grayscale, deskew, Otsu,
+    denoise) at 300 DPI, then Tesseract with a block-of-text page-segmentation mode.
+    Requires opencv (opencv-python-headless); skips gracefully if opencv is absent."""
+    method = "tesseract_preprocessed"
+    confidence = 0.6
+
+    def extract(self, pdf_bytes: bytes) -> dict:
+        try:
+            import cv2  # noqa: F401
+            import numpy as np  # noqa: F401
+        except Exception:
+            log.info("opencv not installed - skipping preprocessed OCR extractor")
+            return {}
+        import pytesseract
+        images = _pdf_to_images(pdf_bytes, 300)
+        parts = []
+        for img in images:
+            try:
+                parts.append(pytesseract.image_to_string(self._preprocess(img), config="--psm 6") or "")
+            except Exception as e:
+                log.info("preprocessed OCR page failed", error=str(e)[:80])
+        text = "\n".join(parts)
+        log.info("Scanned PDF detected - running OCR", method=self.method,
+                 pages=len(images), chars=len(text))
+        return {"financials": _parse_financials(text), "method": self.method,
+                "confidence": self.confidence}
+
+    @staticmethod
+    def _preprocess(pil_img):
+        import cv2
+        import numpy as np
+        img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2GRAY)
+        # Deskew: estimate the dominant text angle from non-zero (dark) pixels.
+        inv = cv2.bitwise_not(img)
+        coords = cv2.findNonZero(inv)
+        if coords is not None and len(coords) > 50:
+            angle = cv2.minAreaRect(coords)[-1]
+            angle = -(90 + angle) if angle < -45 else -angle
+            if abs(angle) > 0.3:
+                h, w = img.shape
+                M = cv2.getRotationMatrix2D((w // 2, h // 2), angle, 1.0)
+                img = cv2.warpAffine(img, M, (w, h),
+                                     flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+        img = cv2.fastNlMeansDenoising(img, h=10)
+        _, img = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        return img
+
+
+class PaddleOCRExtractor:
+    """Optional, gated behind PADDLEOCR=true. Better table-structure recognition but
+    heavy and slow on CPU. Not installed by default — enabling requires paddleocr +
+    paddlepaddle (documented opt-in; not in requirements)."""
+    method = "paddleocr"
+    confidence = 0.7
+
+    def extract(self, pdf_bytes: bytes) -> dict:
+        try:
+            from paddleocr import PaddleOCR
+        except Exception:
+            log.info("paddleocr not installed - skipping (set PADDLEOCR=true and install to enable)")
+            return {}
+        ocr = PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
+        images = _pdf_to_images(pdf_bytes, OCR_DPI)
+        import numpy as np
+        lines = []
+        for img in images:
+            for block in (ocr.ocr(np.array(img), cls=True) or []):
+                for entry in (block or []):
+                    try:
+                        lines.append(entry[1][0])
+                    except Exception:
+                        pass
+        return {"financials": _parse_financials("\n".join(lines)), "method": self.method,
+                "confidence": self.confidence}
+
+
+def extract_financials(pdf_bytes: bytes) -> dict:
+    """
+    Try each extractor in order; return the first result with >= 3 matched line items.
+    Returns {"financials": {}, "method": "none", "confidence": 0.0} if all fail.
+    """
+    extractors = [
+        PdfplumberTablesExtractor(),
+        PdfplumberTextExtractor(),
+        TesseractRawExtractor(),
+        TesseractPreprocessedExtractor(),
+    ]
+    if os.environ.get("PADDLEOCR") == "true":
+        extractors.append(PaddleOCRExtractor())
+
+    for extractor in extractors:
+        try:
+            result = extractor.extract(pdf_bytes)
+        except Exception as e:
+            log.warning("Extractor failed", method=extractor.__class__.__name__, error=str(e)[:120])
+            continue
+        if result and result.get("financials"):
+            n = _matched(result["financials"])
+            if n >= _MIN_FIELDS:
+                log.info("Extraction succeeded", method=result["method"], matched_fields=n)
+                return result
+            log.debug("Extractor returned insufficient data",
+                      method=result.get("method"), matched_fields=n)
+
+    log.warning("All extractors failed - no financial data")
+    return {"financials": {}, "method": "none", "confidence": 0.0}

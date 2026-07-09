@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Settings — SashaOps{% endblock %}
+{% block title %}Settings - SashaOps{% endblock %}
 
 {% block content %}
 
 <div class="page-header">
   <div>
-    <div class="page-title">⚙️ Settings</div>
+    <div class="page-title">Settings</div>
     <div class="page-subtitle">System configuration and security status</div>
   </div>
 </div>
@@ -17,25 +17,25 @@
     <div>
       <div style="font-size:0.78em; color:var(--text-muted)">Database Encryption</div>
       <div style="font-size:0.9em; color:{% if db_encrypted %}var(--accent){% else %}#f87171{% endif %}; margin-top:3px">
-        {% if db_encrypted %}✓ SQLCipher AES-256{% else %}⚠ Unencrypted (development mode){% endif %}
+        {% if db_encrypted %}SQLCipher AES-256{% else %}Unencrypted (development mode){% endif %}
       </div>
     </div>
     <div>
       <div style="font-size:0.78em; color:var(--text-muted)">Post-Quantum KEM</div>
       <div style="font-size:0.9em; color:{% if pqc_available %}var(--accent){% else %}#f59e0b{% endif %}; margin-top:3px">
-        {% if pqc_available %}✓ ML-KEM-768 + X25519 Hybrid{% else %}⚠ liboqs not available{% endif %}
+        {% if pqc_available %}ML-KEM-768 + X25519 Hybrid{% else %}liboqs not available{% endif %}
       </div>
     </div>
     <div>
       <div style="font-size:0.78em; color:var(--text-muted)">Report Signing</div>
       <div style="font-size:0.9em; color:{% if signing_key_exists %}var(--accent){% else %}#f59e0b{% endif %}; margin-top:3px">
-        {% if signing_key_exists %}✓ ML-DSA (Dilithium) key present{% else %}⚠ Signing key not generated{% endif %}
+        {% if signing_key_exists %}ML-DSA (Dilithium) key present{% else %}Signing key not generated{% endif %}
       </div>
     </div>
     <div>
       <div style="font-size:0.78em; color:var(--text-muted)">NIST Compliance</div>
       <div style="font-size:0.9em; color:{% if nist_compliant %}var(--accent){% else %}#f59e0b{% endif %}; margin-top:3px">
-        {% if nist_compliant %}✓ FIPS-203 / FIPS-204 Active{% else %}⚠ Partial — check PQC above{% endif %}
+        {% if nist_compliant %}FIPS-203 / FIPS-204 Active{% else %}Partial - check PQC above{% endif %}
       </div>
     </div>
     {% if fingerprint and fingerprint != 'not set' %}
@@ -52,13 +52,13 @@
   <div class="card-title">Prompt Sanitisation</div>
   <div style="font-size:0.85em; color:var(--text-muted); margin-bottom:12px">
     Strips PII and entity names from prompts before they reach external AI APIs.
-    Real values are restored in responses before display. Pure regex — no AI used.
+    Real values are restored in responses before display. Pure regex - no AI used.
   </div>
   <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:12px">
     <div>
       <div style="font-size:0.78em; color:var(--text-muted)">Status</div>
       <div style="font-size:0.9em; margin-top:3px; color:{% if sanitisation_enabled and ai_mode == 'cloud' %}var(--accent){% else %}#f59e0b{% endif %}">
-        {% if sanitisation_enabled and ai_mode == 'cloud' %}✓ ACTIVE{% elif not sanitisation_enabled %}⚠ Disabled (ENABLE_PROMPT_SANITISATION=false){% else %}ℹ Local mode — sanitisation bypassed{% endif %}
+        {% if sanitisation_enabled and ai_mode == 'cloud' %}ACTIVE{% elif not sanitisation_enabled %}Disabled (ENABLE_PROMPT_SANITISATION=false){% else %}Local mode - sanitisation bypassed{% endif %}
       </div>
     </div>
     <div>

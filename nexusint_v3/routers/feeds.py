@@ -48,10 +48,10 @@ async def feeds_page(request: Request):
     if cached:
         items        = classify_headlines(list(cached.items), business_context="", region_context=region_id)
         age_min      = age // 60
-        cache_note   = f"Live feed — refreshed {age_min}m ago"
+        cache_note   = f"Live feed - refreshed {age_min}m ago"
         last_fetched = datetime.utcnow().strftime("%H:%M UTC")
     else:
-        cache_note = "Feeds loading in background — check back in a moment"
+        cache_note = "Feeds loading in background - check back in a moment"
 
     items.sort(key=lambda x: (
         0 if x.classification == "THREAT" else 1 if x.classification == "OPPORTUNITY" else 2,
@@ -136,7 +136,7 @@ async def fetch_feeds(
     if not items:
         html_items = """
         <div class="empty-state">
-          <div class="empty-icon">📡</div>
+          <div class="empty-icon"></div>
           <div class="empty-text">No headlines found. The background scheduler will populate this region shortly.</div>
         </div>
         """

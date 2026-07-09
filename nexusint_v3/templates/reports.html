@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Reports — SashaOps{% endblock %}
+{% block title %}Reports - SashaOps{% endblock %}
 
 {% block content %}
 
 <div class="page-header">
   <div>
-    <div class="page-title">📄 Reports</div>
+    <div class="page-title">Reports</div>
     <div class="page-subtitle">
       {% if active_client %}{{ active_client.name }}{% else %}Select a client{% endif %}
       · {{ reports|length if reports else 0 }} reports generated
@@ -18,14 +18,14 @@
 
 {% if not active_client %}
 <div class="empty-state">
-  <div class="empty-icon">📄</div>
+  <div class="empty-icon"></div>
   <div class="empty-text">SashaOps hasn't selected a client yet. Choose a client to view their reports.</div>
   <a href="/dashboard" class="btn btn-primary">Go to Dashboard →</a>
 </div>
 
 {% elif not reports %}
 <div class="empty-state">
-  <div class="empty-icon">📄</div>
+  <div class="empty-icon"></div>
   <div class="empty-text">SashaOps hasn't generated any reports yet.</div>
   <a href="/intelligence" class="btn btn-primary">Generate your first report →</a>
 </div>
@@ -55,7 +55,7 @@
       </td>
       <td>
         {% if report.signed %}
-        <span class="badge badge-green" title="{{ report.signing_algo }}">✓ Signed</span>
+        <span class="badge badge-green" title="{{ report.signing_algo }}">Signed</span>
         {% else %}
         <span class="badge badge-gray">Unsigned</span>
         {% endif %}

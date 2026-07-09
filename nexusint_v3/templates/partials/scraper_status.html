@@ -1,4 +1,4 @@
-<!-- partials/scraper_status.html — Data Sources status card (HTMX partial) -->
+<!-- partials/scraper_status.html - Data Sources status card (HTMX partial) -->
 <div id="scraper-status-card"
   {% if refresh_running %}
   hx-get="/intelligence/scraper-status"
@@ -75,7 +75,7 @@
         <div style="font-size:0.78em; color:#6b7280; line-height:1.5">
           Scraper ran but could not extract data from the source website.
           The website may have changed its layout or is temporarily unavailable.
-          Try "Refresh All Sources" to retry — if it keeps failing the data source
+          Try "Refresh All Sources" to retry - if it keeps failing the data source
           may need a code update.
         </div>
         {% elif s.status == 'never_run' %}

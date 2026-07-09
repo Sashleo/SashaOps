@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — SashaOps{% endblock %}
+{% block title %}Dashboard - SashaOps{% endblock %}
 
 {% block content %}
 
 {% if not clients %}
 <!-- ── No clients: wizard state ───────────────────────────────────────────── -->
 <div class="empty-state" style="padding-top:80px">
-  <div class="empty-icon">🏢</div>
+  <div class="empty-icon"></div>
   <div class="empty-text">Welcome to SashaOps. Create your first client to get started.</div>
   <button class="btn btn-primary"
           onclick="document.getElementById('new-client-modal').style.display='flex'">
@@ -57,14 +57,14 @@
   <!-- Market Snapshot -->
   <div class="card">
     <div style="font-size:0.75em;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">
-      Market Snapshot — {{ market_region|replace('_',' ')|title }}
+      Market Snapshot - {{ market_region|replace('_',' ')|title }}
     </div>
     {% if market_index %}
     {% set idx_pct = market_index.change_pct %}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <div style="font-size:0.9em;font-weight:600">{{ market_index.index_name }}</div>
       <div>
-        <span class="text-mono" style="font-weight:700">{{ "%.2f"|format(market_index.close_price) if market_index.close_price else '—' }}</span>
+        <span class="text-mono" style="font-weight:700">{{ "%.2f"|format(market_index.close_price) if market_index.close_price else '-' }}</span>
         {% if idx_pct is not none %}
         <span style="margin-left:8px;font-size:0.85em;{% if idx_pct >= 0 %}color:#4ade80{% else %}color:#f87171{% endif %}">
           {{ "+%.2f"|format(idx_pct) if idx_pct >= 0 else "%.2f"|format(idx_pct) }}%
@@ -74,7 +74,7 @@
     </div>
     <div style="font-size:0.75em;color:var(--text-dim)">{{ market_index.trade_date }} · {{ market_index.source }}</div>
     {% else %}
-    <div style="font-size:0.82em;color:var(--text-muted)">No index data yet — scraper runs every 6 hours.</div>
+    <div style="font-size:0.82em;color:var(--text-muted)">No index data yet - scraper runs every 6 hours.</div>
     {% endif %}
 
     {% if market_forex %}
@@ -118,7 +118,7 @@
         </span>
         {% endif %}
         {% else %}
-        <span style="color:var(--text-dim)">—</span>
+        <span style="color:var(--text-dim)">-</span>
         {% endif %}
       </div>
     </div>
@@ -153,7 +153,7 @@
       {% endif %}
     </div>
     <div style="font-size:0.8em; color:var(--text-muted)">
-      {{ client.industry or 'Industry not set' }} · 🇵🇰 Pakistan
+      {{ client.industry or 'Industry not set' }} · Pakistan
     </div>
     <div style="margin-top:10px; font-size:0.75em; color:var(--text-dim)">
       Last accessed {{ client.last_accessed[:10] if client.last_accessed else 'never' }}
@@ -171,7 +171,7 @@
     <div class="flex items-center justify-between mb-12">
       <div style="font-size:0.7em; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px">Client Summary</div>
       <button onclick="document.getElementById('client-peek-modal').style.display='none'"
-              class="btn" style="padding:3px 9px; font-size:0.85em">✕</button>
+              class="btn" style="padding:3px 9px; font-size:0.85em">X</button>
     </div>
     <div id="client-peek-spinner" class="htmx-indicator" style="text-align:center; padding:20px; color:var(--text-muted)">
       <span class="spinner"></span> Loading…
@@ -190,7 +190,7 @@
 {% if active_client and recent_runs %}
 <div style="margin-top:32px">
   <div style="margin-bottom:12px; font-size:0.8em; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px">
-    Recent Analysis Runs — {{ active_client.name }}
+    Recent Analysis Runs - {{ active_client.name }}
   </div>
   <table class="data-table">
     <thead>
@@ -237,7 +237,7 @@
     <div class="flex items-center justify-between mb-16">
       <div style="font-weight:600">New Client</div>
       <button onclick="document.getElementById('new-client-modal').style.display='none'"
-              class="btn" style="padding:4px 10px">✕</button>
+              class="btn" style="padding:4px 10px">X</button>
     </div>
 
     <form method="POST" action="/dashboard/clients">

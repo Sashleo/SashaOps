@@ -281,7 +281,7 @@ def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
                 log.info(
                     "Using psx_companies market_cap stub for financial analysis",
                     ticker=ticker,
-                    note="Ratios derived from market cap — treat as indicative only",
+                    note="Ratios derived from market cap - treat as indicative only",
                 )
         except Exception as _fb:
             log.debug("psx_companies stub lookup failed", error=str(_fb))

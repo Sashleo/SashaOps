@@ -107,14 +107,14 @@ def liquidity_verdict(
 def altman_z_verdict(z_score: Optional[float], prev_z: Optional[float] = None) -> str:
     """Z_ZONE — Altman Z-Score zone and trend."""
     if z_score is None:
-        return "Z-Score not computable — insufficient financial data"
+        return "Z-Score not computable - insufficient financial data"
 
     if z_score >= _Z_SAFE:
         zone = "safe zone (low distress risk)"
     elif z_score >= _Z_GREY_LO:
-        zone = "grey zone (moderate distress risk — monitor)"
+        zone = "grey zone (moderate distress risk - monitor)"
     else:
-        zone = "distress zone (high bankruptcy risk — urgent attention)"
+        zone = "distress zone (high bankruptcy risk - urgent attention)"
 
     trend_str = ""
     if prev_z is not None:
@@ -148,9 +148,9 @@ def valuation_verdict(
         parts.append(_vs_median(pe_ratio, median_pe, "(P/E)"))
     elif pe_ratio is not None:
         if pe_ratio > 30:
-            parts.append("elevated P/E — growth or overvaluation implied")
+            parts.append("elevated P/E - growth or overvaluation implied")
         elif pe_ratio < 8:
-            parts.append("low P/E — value opportunity or concern about earnings quality")
+            parts.append("low P/E - value opportunity or concern about earnings quality")
 
     return ", ".join(parts) if parts else "valuation data unavailable"
 
@@ -234,7 +234,7 @@ def sentiment_verdict(
         elif confidence >= 0.50:
             conf_str = " (moderate confidence)"
         else:
-            conf_str = " (low confidence — mixed signals)"
+            conf_str = " (low confidence - mixed signals)"
 
     count_str = f" across {headline_count} headlines" if headline_count > 0 else ""
     return f"{tone}{conf_str}{count_str}"
@@ -255,7 +255,7 @@ def margin_verdict(
     elif gross_margin >= _GM_THIN:
         level = "thin but positive margins"
     else:
-        level = "margin compression — cost pressure"
+        level = "margin compression - cost pressure"
 
     parts = [level]
     parts.append(_vs_median(gross_margin, median_gm))

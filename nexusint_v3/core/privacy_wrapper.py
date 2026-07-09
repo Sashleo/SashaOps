@@ -98,14 +98,14 @@ def build_secure_prompt(
 Active client: {client_ref}
 Authorised data sources: {sources_str}
 
-MANDATORY RULES — follow these without exception:
+MANDATORY RULES - follow these without exception:
 1. ISOLATION: You are operating exclusively within the context of {client_name}.
    Do not reference, infer from, or synthesise data from any other client or entity
    not explicitly mentioned in this prompt.
 
 2. MEMORY PRIVACY: Do not store specific financial figures, personal names,
    contract terms, or commercially sensitive specifics in any memory or pattern.
-   Only store structural/analytical patterns — observations about how businesses
+   Only store structural/analytical patterns - observations about how businesses
    in this sector or region tend to behave.
 
 3. DATA LEAKAGE: If you encounter any information that seems out of context
@@ -124,7 +124,7 @@ MANDATORY RULES — follow these without exception:
         if clean_memory.strip():
             memory_block = f"""
 
-=== PRIOR INTELLIGENCE (from your memory — use to build on, not repeat) ===
+=== PRIOR INTELLIGENCE (from your memory - use to build on, not repeat) ===
 {clean_memory}
 
 Use these prior insights to:

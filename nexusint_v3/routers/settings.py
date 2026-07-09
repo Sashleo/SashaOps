@@ -107,10 +107,10 @@ async def verify_audit(request: Request):
     error = f"entry {broken_id}" if broken_id else None
     if valid:
         return HTMLResponse(
-            '<div class="alert alert-success">✓ Audit chain verified — all entries intact, no tampering detected.</div>'
+            '<div class="alert alert-success">Audit chain verified - all entries intact, no tampering detected.</div>'
         )
     return HTMLResponse(
-        f'<div class="alert alert-error">⚠ Audit chain integrity check failed at {error}.</div>'
+        f'<div class="alert alert-error">Audit chain integrity check failed at {error}.</div>'
     )
 
 
@@ -226,7 +226,7 @@ async def confirm_totp(request: Request, totp_code: str = Form(...)):
         (secret, username)
     )
     log.info("TOTP activated", username=username)
-    return HTMLResponse('<div class="alert alert-success">Two-factor authentication activated. ✓</div>')
+    return HTMLResponse('<div class="alert alert-success">Two-factor authentication activated.</div>')
 
 
 @router.post("/disable-totp", response_class=HTMLResponse)

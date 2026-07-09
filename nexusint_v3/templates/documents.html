@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Documents — SashaOps{% endblock %}
+{% block title %}Documents - SashaOps{% endblock %}
 
 {% block content %}
 
 <div class="page-header">
   <div>
-    <div class="page-title">📂 Documents</div>
+    <div class="page-title">Documents</div>
     <div class="page-subtitle">
       {% if active_client %}{{ active_client.name }}{% else %}Select a client{% endif %}
       · {{ documents|length if documents else 0 }} documents
@@ -20,14 +20,14 @@
 
 {% if not active_client %}
 <div class="empty-state">
-  <div class="empty-icon">📂</div>
+  <div class="empty-icon"></div>
   <div class="empty-text">SashaOps hasn't selected a client yet. Choose a client to manage their documents.</div>
   <a href="/dashboard" class="btn btn-primary">Go to Dashboard →</a>
 </div>
 
 {% elif not documents %}
 <div class="empty-state">
-  <div class="empty-icon">📄</div>
+  <div class="empty-icon"></div>
   <div class="empty-text">SashaOps hasn't found any documents yet. Upload financial statements, contracts, or reports to enhance analysis.</div>
   <button class="btn btn-primary" onclick="document.getElementById('upload-modal').style.display='flex'">
     Upload your first document →
@@ -69,7 +69,7 @@
       <td style="color:var(--text-muted)">{{ doc.upload_at[:10] }}</td>
       <td>
         {% if doc.last_analysed %}
-        <span class="badge badge-green">✓</span>
+        <span class="badge badge-green">OK</span>
         {% endif %}
       </td>
       <td>
@@ -94,12 +94,12 @@
   <div class="card" style="width:100%; max-width:480px; margin:20px">
     <div class="flex items-center justify-between mb-16">
       <div style="font-weight:600">Upload Document</div>
-      <button onclick="document.getElementById('upload-modal').style.display='none'" class="btn" style="padding:4px 10px">✕</button>
+      <button onclick="document.getElementById('upload-modal').style.display='none'" class="btn" style="padding:4px 10px">X</button>
     </div>
 
     <form method="POST" action="/documents/upload" enctype="multipart/form-data">
       <div class="form-group">
-        <label class="form-label">File (PDF, DOCX, XLSX, CSV, TXT — max 50MB)</label>
+        <label class="form-label">File (PDF, DOCX, XLSX, CSV, TXT - max 50MB)</label>
         <input type="file" name="file" class="form-input"
                accept=".pdf,.docx,.xlsx,.csv,.txt" required>
       </div>

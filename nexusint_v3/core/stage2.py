@@ -197,7 +197,7 @@ async def run_stage2(run_id, client_id, business_name, region_id, module_list, c
                 for hint, verdict_text in compute_verdicts(local_result, sector=sector_of_business).items():
                     run_token_sheet.add(verdict_text, hint=hint)
             except Exception as _vex:
-                log.warning("verdicts compute failed — interpretation tokens skipped",
+                log.warning("verdicts compute failed - interpretation tokens skipped",
                              error=str(_vex))
 
         # ── Security gate: local data unavailable for financial/valuation ──────
@@ -281,7 +281,7 @@ async def run_stage2(run_id, client_id, business_name, region_id, module_list, c
         import re as _re
 
         _QUOTA_ERR = (
-            "AI quota exceeded — your Gemini API key has no available quota. "
+            "AI quota exceeded - your Gemini API key has no available quota. "
             "Check GOOGLE_API_KEY billing/limits at ai.google.dev/gemini-api/docs/rate-limits."
         )
 
@@ -353,11 +353,11 @@ async def run_stage2(run_id, client_id, business_name, region_id, module_list, c
                                     mod_id=job.mod_id, error=str(_le)[:120])
                         return (
                             f"## {job.module.label}\n\n"
-                            f"_⚙️ Computed locally_\n\n"
+                            f"_Computed locally_\n\n"
                             f"Data collection succeeded but template rendering failed: "
                             f"{str(_le)[:120]}"
                         ), None
-                    log.warning("Local module render failed — falling through to Gemini",
+                    log.warning("Local module render failed - falling through to Gemini",
                                 mod_id=job.mod_id, error=str(_le)[:120])
 
             if settings.LOCAL_ONLY:
@@ -365,7 +365,7 @@ async def run_stage2(run_id, client_id, business_name, region_id, module_list, c
                 # Return a graceful no-data card instead of calling Gemini.
                 return (
                     f"## {job.module.label}\n\n"
-                    f"_⚙️ Computed locally_\n\n"
+                    f"_Computed locally_\n\n"
                     f"No local data available for this module. "
                     f"Upload documents or ensure PSX ticker is set."
                 ), None
@@ -393,7 +393,7 @@ async def run_stage2(run_id, client_id, business_name, region_id, module_list, c
                             # Parse retry_delay from API error (e.g. "seconds: 33")
                             m = _re.search(r'retry_delay.*?seconds:\s*(\d+)', msg, _re.DOTALL)
                             wait_s = max(int(m.group(1)) + 5, 35) if m else 65
-                            log.warning("Rate limited — waiting before retry",
+                            log.warning("Rate limited - waiting before retry",
                                         mod_id=job.mod_id, wait_s=wait_s, attempt=attempt + 1)
                             await asyncio.sleep(wait_s)
                             continue
@@ -407,7 +407,7 @@ async def run_stage2(run_id, client_id, business_name, region_id, module_list, c
             # B-2: §5.3 OutputValidator — one corrective retry, then narrative fallback
             v_result = _validate_response(raw, run_token_sheet)
             if not v_result.passed:
-                log.warning("Response failed validation — attempting corrective retry",
+                log.warning("Response failed validation - attempting corrective retry",
                             mod_id=job.mod_id, violations=v_result.violations[:3])
                 retry_prompt = build_retry_prompt(job.sanitised_prompt, v_result)
                 try:
@@ -451,7 +451,7 @@ async def run_stage2(run_id, client_id, business_name, region_id, module_list, c
                 if (getattr(job.module, "local_data_sufficient", False)
                         and local_available and ratios_text):
                     fallback = (
-                        f"**{job.module.label} — Local Quantitative Analysis**\n\n"
+                        f"**{job.module.label} - Local Quantitative Analysis**\n\n"
                         f"_(Computed locally from PSX financial statements. AI commentary "
                         f"unavailable: {error})_\n\n{ratios_text}"
                     )
@@ -552,7 +552,7 @@ async def run_stage2(run_id, client_id, business_name, region_id, module_list, c
                 )
 
     except (RunCancelled, asyncio.CancelledError):
-        log.info("Stage 2 cancelled by user — aborting", run_id=run_id)
+        log.info("Stage 2 cancelled by user - aborting", run_id=run_id)
         raise
     except Exception as e:
         log.error("Stage 2 crashed", run_id=run_id, error=str(e), exc_info=True)

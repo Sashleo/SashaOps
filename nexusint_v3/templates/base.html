@@ -33,7 +33,7 @@
               hx-target="#client-indicator"
               hx-swap="outerHTML"
               name="client_id">
-        <option value="">— Select client —</option>
+        <option value="">- Select client -</option>
         {% for client in clients %}
         <option value="{{ client.id }}"
           {% if active_client and active_client.id == client.id %}selected{% endif %}>
@@ -50,34 +50,34 @@
         <span class="nav-icon">◈</span> Dashboard
       </a>
       <a href="/intelligence" class="nav-item {% if active_page == 'intelligence' %}active{% endif %}">
-        <span class="nav-icon">⚡</span> Intelligence
+        <span class="nav-icon"></span> Intelligence
       </a>
 
       <div class="nav-section-label" style="margin-top:8px">Data</div>
 
       <a href="/feeds" class="nav-item {% if active_page == 'feeds' %}active{% endif %}">
-        <span class="nav-icon">📡</span> News Feeds
+        <span class="nav-icon"></span> News Feeds
       </a>
       <a href="/markets" class="nav-item {% if active_page == 'markets' %}active{% endif %}">
-        <span class="nav-icon">📈</span> Markets
+        <span class="nav-icon"></span> Markets
       </a>
       <a href="/documents" class="nav-item {% if active_page == 'documents' %}active{% endif %}">
-        <span class="nav-icon">📂</span> Documents
+        <span class="nav-icon"></span> Documents
       </a>
 
       <div class="nav-section-label" style="margin-top:8px">Output</div>
 
       <a href="/reports" class="nav-item {% if active_page == 'reports' %}active{% endif %}">
-        <span class="nav-icon">📄</span> Reports
+        <span class="nav-icon"></span> Reports
       </a>
       <a href="/memory" class="nav-item {% if active_page == 'memory' %}active{% endif %}">
-        <span class="nav-icon">🧠</span> Memory Lab
+        <span class="nav-icon"></span> Memory Lab
       </a>
 
       <div class="nav-section-label" style="margin-top:8px">System</div>
 
       <a href="/settings" class="nav-item {% if active_page == 'settings' %}active{% endif %}">
-        <span class="nav-icon">⚙️</span> Settings
+        <span class="nav-icon"></span> Settings
       </a>
     </nav>
 
@@ -114,7 +114,7 @@ function showToast(msg, type = 'info', duration = 4000) {
   setTimeout(() => el.remove(), duration);
 }
 
-// HTMX error handler — only surface genuine server errors (5xx). Benign cases
+// HTMX error handler - only surface genuine server errors (5xx). Benign cases
 // (aborted/navigated-away requests with status 0, or expected 4xx handled inline)
 // should not pop the global error toast.
 document.addEventListener('htmx:responseError', (e) => {

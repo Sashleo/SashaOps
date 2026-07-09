@@ -76,7 +76,7 @@ def fetch_region_market_data(region_id: str) -> Tuple[RegionMarketData, Optional
 
     idx = get_latest_index()
     if not idx or idx.get("close_value") is None:
-        result.error = "PSX index data not yet available — run the PSX scraper"
+        result.error = "PSX index data not yet available - run the PSX scraper"
         result.has_partial_data = True
         return result, result.error
 
@@ -264,7 +264,7 @@ def format_market_data_text(region_data: RegionMarketData) -> str:
     if not region_data.indices:
         return "PSX market data not yet available."
 
-    lines = ["MARKET DATA — KSE (Pakistan Stock Exchange)\n"]
+    lines = ["MARKET DATA - KSE (Pakistan Stock Exchange)\n"]
     for idx in region_data.indices:
         if idx.error or idx.current_price is None:
             lines.append(f"{idx.name}: Data unavailable ({idx.error or 'no price'})")

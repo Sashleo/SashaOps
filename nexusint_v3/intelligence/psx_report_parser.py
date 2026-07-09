@@ -174,14 +174,20 @@ def fetch_psx_report_financials(ticker: str) -> Optional[dict]:
         _save_cache(ticker, {})
         return None
 
-    text, used_ocr = _pdf_text(pdf_bytes)
-    doc = _parse_financials(text)
-    if doc and used_ocr:
-        doc["_ocr"] = True   # mark lower-confidence OCR-derived figures
-    _save_cache(ticker, doc)
+    # Multi-stage extraction chain (pdfplumber tables -> text -> Tesseract -> opencv
+    # preprocessed -> optional PaddleOCR). Returns the first result with >=3 fields.
+    from intelligence.pdf_extractor import extract_financials
+    res = extract_financials(pdf_bytes)
+    doc = res.get("financials") or {}
+    method = res.get("method", "none")
+    if doc:
+        doc["_method"] = method
+        if method.startswith(("tesseract", "paddle")):
+            doc["_ocr"] = True   # mark lower-confidence OCR-derived figures
+    _save_cache(ticker, doc)   # cached so a second analysis is a hit (no re-OCR)
     if doc:
         log.info("PSX report parsed", ticker=ticker, fields=sorted(doc.keys()),
-                 ocr=used_ocr, url=url)
+                 method=method, url=url)
     return doc or None
 
 

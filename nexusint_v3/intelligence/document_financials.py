@@ -77,7 +77,7 @@ def _get_nlp():
         _nlp = spacy.load("en_core_web_sm")
         log.info("spaCy en_core_web_sm loaded")
     except Exception as e:
-        log.info("spaCy unavailable — NLP context extraction will use keyword matching only",
+        log.info("spaCy unavailable - NLP context extraction will use keyword matching only",
                  reason=str(e)[:80])
         _nlp = None
     return _nlp
@@ -245,18 +245,18 @@ def extract_financials_from_text(
 
     # Stage 2: Text regex (fallback or supplement)
     if len(out) < 3 and text:
-        log.info("Stage 2 (text regex) — Stage 1 found too few fields", stage1_count=len(out))
+        log.info("Stage 2 (text regex) - Stage 1 found too few fields", stage1_count=len(out))
         text_out = _extract_from_text(text)
         log.info("Stage 2 (text regex) done", new_fields=len(text_out), keys=list(text_out.keys()))
         for k, v in text_out.items():
             if k not in out:
                 out[k] = v
     elif len(out) >= 3:
-        log.info("Stage 2 skipped — Stage 1 sufficient", fields=len(out))
+        log.info("Stage 2 skipped - Stage 1 sufficient", fields=len(out))
 
     # Stage 3: Spreadsheet (for XLSX/CSV uploads)
     if len(out) < 3 and doc_bytes and doc_type in ("xlsx", "csv"):
-        log.info("Stage 3 (spreadsheet) — previous stages found too few fields", count=len(out))
+        log.info("Stage 3 (spreadsheet) - previous stages found too few fields", count=len(out))
         sheet_out = _extract_from_spreadsheet(doc_bytes, doc_type)
         log.info("Stage 3 (spreadsheet) done", new_fields=len(sheet_out), keys=list(sheet_out.keys()))
         for k, v in sheet_out.items():
@@ -346,7 +346,7 @@ def run_document_financial_analysis(
 
     if len(financials) < 3:
         log.info(
-            "Insufficient financial data in document — skipping local analysis",
+            "Insufficient financial data in document - skipping local analysis",
             company=company_name,
             fields_found=len(financials),
             doc_type=doc_type,

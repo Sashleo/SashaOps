@@ -253,7 +253,7 @@ Review these entries collected across multiple business analyses:
 
 {memory_dump}
 
-Identify 8-10 CROSS-CUTTING PATTERNS — recurring themes, systemic risks, or analytical
+Identify 8-10 CROSS-CUTTING PATTERNS - recurring themes, systemic risks, or analytical
 heuristics that appear across multiple businesses and industries.
 
 These patterns will be injected into ALL future analyses to make them smarter.
@@ -261,7 +261,7 @@ These patterns will be injected into ALL future analyses to make them smarter.
 Rules:
 - No company names, no specific figures, no PII
 - Patterns must be structural observations, not specific facts
-- Each pattern must be actionable — something an analyst should consider
+- Each pattern must be actionable - something an analyst should consider
 
 Format: One pattern per line.
 Start each with a category tag like [MARKET], [RISK], [STRATEGY], [OPERATIONS], [REGULATORY], [CULTURAL]
@@ -270,7 +270,7 @@ Start each with a category tag like [MARKET], [RISK], [STRATEGY], [OPERATIONS], 
     result = run_fast(prompt)
 
     if not result:
-        return "Pattern learning failed — no response from AI"
+        return "Pattern learning failed - no response from AI"
 
     # Store the patterns
     now  = datetime.utcnow().isoformat()

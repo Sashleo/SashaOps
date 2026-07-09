@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}News Feeds — SashaOps{% endblock %}
+{% block title %}News Feeds - SashaOps{% endblock %}
 
 {% block content %}
 
 <div class="page-header">
   <div>
-    <div class="page-title">📡 News Feeds</div>
+    <div class="page-title">News Feeds</div>
     <div class="page-subtitle">
       Regional intelligence from {{ feed_count or 0 }} sources
       {% if cache_note %} · {{ cache_note }}{% endif %}
@@ -37,7 +37,7 @@
   <button class="btn" onclick="setFilter('cat','tech',this)">Tech</button>
 </div>
 
-<!-- Source filter bar — built dynamically from loaded items -->
+<!-- Source filter bar - built dynamically from loaded items -->
 <div id="source-filter" class="flex gap-8 mb-16" style="flex-wrap:wrap; font-size:0.78em">
   <button class="btn btn-primary" onclick="setSource('all',this)" style="font-size:inherit">All sources</button>
 </div>
@@ -69,7 +69,7 @@
   {% endfor %}
   {% else %}
   <div class="empty-state">
-    <div class="empty-icon">📡</div>
+    <div class="empty-icon"></div>
     <div class="empty-text">SashaOps hasn't fetched any feeds yet. Select a region and click Refresh Feeds.</div>
   </div>
   {% endif %}

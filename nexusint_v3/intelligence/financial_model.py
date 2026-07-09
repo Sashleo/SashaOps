@@ -326,8 +326,12 @@ def analyse_from_document(
         result.working_capital = _compute_working_capital(current_assets, current_liabilities, result.revenue, revenue_history)
         # M8 — enterprise FCFF DCF is not meaningful for financial institutions.
         # Banks are valued on multiples (P/B, P/E) instead (assembled downstream).
+        # FIX 1 — never let a DCF error crash the whole analysis; leave dcf empty.
         if not _is_bank(sector):
-            result.dcf       = _compute_dcf(result.revenue, result.ebitda, None, result.growth.revenue_growth_yoy, result.total_debt, result.cash, region_id)
+            try:
+                result.dcf   = _compute_dcf(result.revenue, result.ebitda, None, result.growth.revenue_growth_yoy, result.total_debt, result.cash, region_id)
+            except Exception as _dcf_e:
+                log.warning("DCF computation failed - skipping DCF", error=str(_dcf_e)[:120])
         result.three_statement = _build_three_statement_model(result.revenue, result.profitability.gross_margin, result.profitability.ebitda_margin, result.profitability.net_margin, result.growth.revenue_growth_yoy, capex)
 
         if peer_tickers:
@@ -373,7 +377,7 @@ def _compute_liquidity(current_assets, current_liabilities, inventory, ocf, cash
         elif r.current_ratio >= 1.2:
             r.interpretation = "Adequate liquidity. Short-term obligations covered but limited buffer."
         elif r.current_ratio >= 1.0:
-            r.interpretation = "Tight liquidity. Monitor cash closely — limited room for unexpected expenses."
+            r.interpretation = "Tight liquidity. Monitor cash closely - limited room for unexpected expenses."
         else:
             r.interpretation = "LIQUIDITY RISK: Current liabilities exceed current assets. Potential short-term solvency concern."
 
@@ -398,11 +402,11 @@ def _compute_profitability(revenue, gross_profit, ebitda, ebit, net_income, tota
         if r.net_margin < 0:
             flags.append("Company is loss-making at the net income level")
         elif r.net_margin < 0.03:
-            flags.append("Very thin net margins — vulnerable to cost increases")
+            flags.append("Very thin net margins - vulnerable to cost increases")
     if r.ebitda_margin is not None and r.ebitda_margin < 0.10:
-        flags.append("EBITDA margin below 10% — limited operating leverage")
+        flags.append("EBITDA margin below 10% - limited operating leverage")
     if r.roe is not None and r.roe > 0.20:
-        flags.append("Strong ROE above 20% — efficient use of shareholder capital")
+        flags.append("Strong ROE above 20% - efficient use of shareholder capital")
 
     r.interpretation = " | ".join(flags) if flags else "Profitability within normal range"
     return r
@@ -429,9 +433,9 @@ def _compute_leverage(total_debt, equity, ebitda, ebit, cash, interest_expense=N
     flags = []
     if r.debt_to_ebitda is not None:
         if r.debt_to_ebitda > 5:
-            flags.append("HIGH LEVERAGE: Net debt/EBITDA above 5x — significant refinancing risk")
+            flags.append("HIGH LEVERAGE: Net debt/EBITDA above 5x - significant refinancing risk")
         elif r.debt_to_ebitda > 3:
-            flags.append("Elevated leverage: Net debt/EBITDA 3-5x — manageable but monitor")
+            flags.append("Elevated leverage: Net debt/EBITDA 3-5x - manageable but monitor")
         elif r.debt_to_ebitda < 1:
             flags.append("Conservative balance sheet: Net debt/EBITDA below 1x")
 
@@ -455,9 +459,9 @@ def _compute_efficiency(revenue, total_assets, receivables, payables, inventory,
     flags = []
     if r.cash_conversion_cycle is not None:
         if r.cash_conversion_cycle > 90:
-            flags.append(f"Long cash conversion cycle ({r.cash_conversion_cycle:.0f} days) — capital tied up in operations")
+            flags.append(f"Long cash conversion cycle ({r.cash_conversion_cycle:.0f} days) - capital tied up in operations")
         elif r.cash_conversion_cycle < 0:
-            flags.append(f"Negative CCC ({r.cash_conversion_cycle:.0f} days) — company funded by suppliers (e.g. retail model)")
+            flags.append(f"Negative CCC ({r.cash_conversion_cycle:.0f} days) - company funded by suppliers (e.g. retail model)")
 
     r.interpretation = " | ".join(flags) if flags else "Operating efficiency within normal range"
     return r
@@ -483,9 +487,9 @@ def _compute_growth(revenue_history: list, gross_profit, ebitda, income_stmt) ->
         elif r.revenue_growth_yoy > 0.05:
             r.interpretation = f"Steady growth: {r.revenue_growth_yoy:.1%} YoY"
         elif r.revenue_growth_yoy > 0:
-            r.interpretation = f"Slow growth: {r.revenue_growth_yoy:.1%} YoY — below inflation in most markets"
+            r.interpretation = f"Slow growth: {r.revenue_growth_yoy:.1%} YoY - below inflation in most markets"
         else:
-            r.interpretation = f"Revenue declining: {r.revenue_growth_yoy:.1%} YoY — investigate cause"
+            r.interpretation = f"Revenue declining: {r.revenue_growth_yoy:.1%} YoY - investigate cause"
 
     return r
 
@@ -526,13 +530,13 @@ def _compute_altman_z(current_assets, current_liabilities, total_assets, total_d
             r.model = "Altman Z'' (bank/non-manufacturer)"
             if r.z_score > 2.6:
                 r.zone = "SAFE"
-                r.interpretation = f"Z''-Score {r.z_score:.2f} — Safe zone (bank model). Low distress risk."
+                r.interpretation = f"Z''-Score {r.z_score:.2f} - Safe zone (bank model). Low distress risk."
             elif r.z_score > 1.1:
                 r.zone = "GREY"
-                r.interpretation = f"Z''-Score {r.z_score:.2f} — Grey zone (bank model). Monitor capital adequacy."
+                r.interpretation = f"Z''-Score {r.z_score:.2f} - Grey zone (bank model). Monitor capital adequacy."
             else:
                 r.zone = "DISTRESS"
-                r.interpretation = f"Z''-Score {r.z_score:.2f} — Distress zone (bank model). Elevated risk."
+                r.interpretation = f"Z''-Score {r.z_score:.2f} - Distress zone (bank model). Elevated risk."
             return r
 
         if not all(v is not None and total_assets and total_assets != 0 for v in
@@ -559,13 +563,13 @@ def _compute_altman_z(current_assets, current_liabilities, total_assets, total_d
 
         if r.z_score > 2.99:
             r.zone = "SAFE"
-            r.interpretation = f"Z-Score {r.z_score:.2f} — Safe zone. Low bankruptcy risk."
+            r.interpretation = f"Z-Score {r.z_score:.2f} - Safe zone. Low bankruptcy risk."
         elif r.z_score > 1.81:
             r.zone = "GREY"
-            r.interpretation = f"Z-Score {r.z_score:.2f} — Grey zone. Some financial stress. Monitor closely."
+            r.interpretation = f"Z-Score {r.z_score:.2f} - Grey zone. Some financial stress. Monitor closely."
         else:
             r.zone = "DISTRESS"
-            r.interpretation = f"Z-Score {r.z_score:.2f} — Distress zone. Elevated bankruptcy risk. Investigate immediately."
+            r.interpretation = f"Z-Score {r.z_score:.2f} - Distress zone. Elevated bankruptcy risk. Investigate immediately."
 
     except Exception as e:
         r.interpretation = f"Z-Score computation error: {str(e)}"
@@ -592,13 +596,13 @@ def _compute_dupont(net_income, revenue, total_assets, equity) -> DuPontAnalysis
         # Normalise to identify dominant driver
         if r.roe_computed and r.roe_computed > 0:
             if r.equity_multiplier > 3:
-                r.interpretation = f"ROE of {r.roe_computed:.1%} is primarily driven by financial leverage — strip out debt and underlying business returns are lower"
+                r.interpretation = f"ROE of {r.roe_computed:.1%} is primarily driven by financial leverage - strip out debt and underlying business returns are lower"
             elif r.net_margin and r.net_margin > 0.15:
-                r.interpretation = f"ROE of {r.roe_computed:.1%} is driven by strong profitability — high-quality earnings"
+                r.interpretation = f"ROE of {r.roe_computed:.1%} is driven by strong profitability - high-quality earnings"
             else:
-                r.interpretation = f"ROE of {r.roe_computed:.1%} — balanced contribution from margin, efficiency, and leverage"
+                r.interpretation = f"ROE of {r.roe_computed:.1%} - balanced contribution from margin, efficiency, and leverage"
         else:
-            r.interpretation = "Negative or zero ROE — equity is being eroded"
+            r.interpretation = "Negative or zero ROE - equity is being eroded"
 
     return r
 
@@ -724,7 +728,7 @@ def _compute_dcf(revenue, ebitda, fcf, revenue_growth, total_debt, cash, region_
             f"WACC: {r.wacc:.1%} | Terminal growth: {terminal_growth:.1%}"
         )
     else:
-        r.interpretation = "DCF computation incomplete — insufficient financial data"
+        r.interpretation = "DCF computation incomplete - insufficient financial data"
 
     return r
 
@@ -809,12 +813,15 @@ def _build_three_statement_model(revenue, gross_margin, ebitda_margin, net_margi
         "net_margin": nm,
     }
     r.capex_to_revenue = 0.04
-    r.interpretation = (
-        f"3-year projection at {g:.1%} CAGR | "
-        f"Y3 Revenue: {_fmt(r.revenue_projections[-1])} | "
-        f"Y3 EBITDA: {_fmt(r.ebitda_projections[-1])} | "
-        f"Y3 FCF: {_fmt(r.fcf_projections[-1])}"
-    )
+    try:
+        r.interpretation = (
+            f"3-year projection at {g:.1%} CAGR | "
+            f"Y3 Revenue: {_fmt(r.revenue_projections[-1] if r.revenue_projections else None)} | "
+            f"Y3 EBITDA: {_fmt(r.ebitda_projections[-1] if r.ebitda_projections else None)} | "
+            f"Y3 FCF: {_fmt(r.fcf_projections[-1] if r.fcf_projections else None)}"
+        )
+    except Exception:
+        r.interpretation = "3-year projections computed - see table below"
     return r
 
 
@@ -902,7 +909,7 @@ def _identify_risks_strengths(analysis: FinancialAnalysis) -> tuple[list, list]:
 
     if analysis.liquidity.current_ratio:
         if analysis.liquidity.current_ratio < 1.0:
-            risks.append(f"Current ratio {analysis.liquidity.current_ratio:.2f} — short-term liquidity risk")
+            risks.append(f"Current ratio {analysis.liquidity.current_ratio:.2f} - short-term liquidity risk")
         elif analysis.liquidity.current_ratio >= 2.0:
             strengths.append(f"Strong current ratio {analysis.liquidity.current_ratio:.2f}")
 
@@ -1154,7 +1161,7 @@ def _assemble_report_dict(analysis: "FinancialAnalysis", region_id: str, is_bank
     result["_excluded"] = excluded
     # Also overwrite the human-readable display fields for excluded metrics so an
     # implausible number never prints (verification: HBL shows no implausible ratio).
-    _EXCLUDE_MARK = "data error suspected — excluded"
+    _EXCLUDE_MARK = "data error suspected - excluded"
     for name in excluded:
         if name in result:                       # gross_margin, net_margin, roe, ...
             result[name] = _EXCLUDE_MARK
@@ -1207,7 +1214,7 @@ def format_ratios_for_prompt(analysis_dict: dict) -> str:
         return f"{v:.1f}"
 
     lines = [
-        f"PRE-COMPUTED FINANCIAL RATIOS — {analysis_dict.get('company', '')} "
+        f"PRE-COMPUTED FINANCIAL RATIOS - {analysis_dict.get('company', '')} "
         f"({analysis_dict.get('ticker', '')}, {analysis_dict.get('fiscal_year', 'latest')})",
         "",
         f"Revenue: {analysis_dict.get('revenue', 'N/A')}  EBITDA: {analysis_dict.get('ebitda', 'N/A')}  "
@@ -1302,11 +1309,11 @@ def format_health_score(analysis_dict: dict) -> str:
     total = len(basis) + len(missing)
     if score is None or conf < 0.4:
         req = ", ".join(missing) or "balance sheet + income statement data"
-        return f"**Score withheld — insufficient data.** _Required: {req}._"
+        return f"**Score withheld - insufficient data.** _Required: {req}._"
     if conf >= 0.7:
         return f"**Health Score: {score:.1f}/10 (high confidence)**"
     miss = (", missing: " + ", ".join(missing)) if missing else ""
-    return (f"**Provisional Score: {score:.1f}/10** — {len(basis)} of {total} metric "
+    return (f"**Provisional Score: {score:.1f}/10** - {len(basis)} of {total} metric "
             f"groups{miss}.")
 
 
@@ -1345,13 +1352,13 @@ def generate_local_financial_report(
         return f"{v:.{dec}f}" if v is not None else "N/A"
 
     def _sig(v, good_above=None, warn_below=None):
-        if v is None:                               return "·"
-        if good_above is not None and v >= good_above: return "✓"
-        if warn_below is not None and v < warn_below:  return "⚠"
-        return "·"
+        if v is None:                               return "-"
+        if good_above is not None and v >= good_above: return "OK"
+        if warn_below is not None and v < warn_below:  return "WATCH"
+        return "-"
 
     lines = [
-        f"## Financial Health Analysis — {company} ({ticker}, FY {fy})",
+        f"## Financial Health Analysis - {company} ({ticker}, FY {fy})",
         f"_Source: PSX financial statements · Computed locally · Currency: {currency}_",
         "",
         f"{format_health_score(analysis_dict)}"
@@ -1414,8 +1421,8 @@ def generate_local_financial_report(
     components = raw.get("altman_components") or {}
     zone_explain = {
         "SAFE":     "Low bankruptcy risk.",
-        "GREY":     "Some financial stress — monitor closely.",
-        "DISTRESS": "Elevated bankruptcy risk — investigate immediately.",
+        "GREY":     "Some financial stress - monitor closely.",
+        "DISTRESS": "Elevated bankruptcy risk - investigate immediately.",
     }.get(altman_zone, "")
 
     if components and altman_z is not None:
@@ -1440,7 +1447,7 @@ def generate_local_financial_report(
     else:
         lines += [
             "### Altman Z-Score",
-            f"**Z = {_n(altman_z, 2)} ({altman_zone})** — {zone_explain}",
+            f"**Z = {_n(altman_z, 2)} ({altman_zone})** - {zone_explain}",
             "_Component breakdown unavailable (insufficient balance-sheet data)._",
             "",
         ]
@@ -1483,7 +1490,7 @@ def generate_local_financial_report(
             "",
             "| Multiple | Value | Banking-sector median |",
             "|----------|-------|-----------------------|",
-            f"| P/B | {_x(pb) if pb else 'N/A'} | — |",
+            f"| P/B | {_x(pb) if pb else 'N/A'} | - |",
             f"| P/E | {_x(pe) if pe else 'N/A'} | {_x(pe_med) if pe_med else 'insufficient peers'} |",
             "",
         ]
@@ -1521,9 +1528,9 @@ def generate_local_financial_report(
     risks     = analysis_dict.get("key_risks", [])
     strengths = analysis_dict.get("key_strengths", [])
     if risks:
-        lines += ["### Key Risks"] + [f"- ⚠ {r}" for r in risks] + [""]
+        lines += ["### Key Risks"] + [f"- {r}" for r in risks] + [""]
     if strengths:
-        lines += ["### Key Strengths"] + [f"- ✓ {s}" for s in strengths] + [""]
+        lines += ["### Key Strengths"] + [f"- {s}" for s in strengths] + [""]
 
     # ── FinBERT Sentiment ─────────────────────────────────────────────────────
     if isinstance(sentiment_scores, dict):
@@ -1533,7 +1540,7 @@ def generate_local_financial_report(
         n   = sentiment_scores.get("n", 0)
         top = sentiment_scores.get("top", [])
         lines += [
-            "### Market Sentiment (PSX Announcements — FinBERT)",
+            "### Market Sentiment (PSX Announcements - FinBERT)",
             f"_Based on {n} recent announcements_",
             "",
             f"**Positive: {pos:.0%}  ·  Neutral: {neu:.0%}  ·  Negative: {neg:.0%}**",

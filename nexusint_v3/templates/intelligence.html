@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Intelligence — SashaOps{% endblock %}
+{% block title %}Intelligence - SashaOps{% endblock %}
 
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/marked@14.1.0/marked.min.js"></script>
@@ -38,8 +38,8 @@
   <!-- Header -->
   <div class="flex items-center justify-between mb-16" style="border-bottom:1px solid var(--border); padding-bottom:12px">
     <div>
-      <div style="color:var(--accent); font-weight:700; font-size:1.05em">✓ DATA COLLECTION COMPLETE</div>
-      <div style="color:var(--text-muted); font-size:0.82em; margin-top:2px">{{ run_state.stage_number }} — Review before proceeding to analysis</div>
+      <div style="color:var(--accent); font-weight:700; font-size:1.05em">DATA COLLECTION COMPLETE</div>
+      <div style="color:var(--text-muted); font-size:0.82em; margin-top:2px">{{ run_state.stage_number }} - Review before proceeding to analysis</div>
     </div>
     <div style="display:flex; gap:8px; align-items:center">
       {% if run_state.data_summary and run_state.data_summary.market_sentiment %}
@@ -67,7 +67,7 @@
         {% for src in run_state.data_summary.source_details %}
         <div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid var(--bg-3)">
           <div style="color:{% if src.status == 'ok' %}var(--text-primary){% else %}var(--danger){% endif %}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:60%">
-            {% if src.status == 'ok' %}✓{% else %}✗{% endif %} {{ src.label }}
+            {% if src.status == 'ok' %}OK{% else %}FAIL{% endif %} {{ src.label }}
           </div>
           <div style="color:var(--text-dim); font-size:0.88em; flex-shrink:0; padding-left:8px">
             {% if src.status == 'ok' %}
@@ -112,7 +112,7 @@
     <div>
       <span style="color:var(--text-dim)">Market Data</span>
       <span style="margin-left:6px; color:{% if run_state.data_summary and run_state.data_summary.stock_data_available %}var(--accent){% else %}var(--warning){% endif %}">
-        {% if run_state.data_summary and run_state.data_summary.stock_data_available %}✓ Available{% else %}✗ Unavailable{% endif %}
+        {% if run_state.data_summary and run_state.data_summary.stock_data_available %}Available{% else %}Unavailable{% endif %}
       </span>
     </div>
     <div>
@@ -133,7 +133,7 @@
     </div>
     {% if run_state.data_summary and run_state.data_summary.gaps %}
     <div style="margin-left:auto">
-      <span style="color:var(--warning)">⚠ {{ run_state.data_summary.gaps | join(' · ') }}</span>
+      <span style="color:var(--warning)">{{ run_state.data_summary.gaps | join(' · ') }}</span>
     </div>
     {% endif %}
   </div>
@@ -159,11 +159,11 @@
             hx-post="/intelligence/run/{{ run_state.run_id }}/cancel"
             hx-swap="none"
             style="font-size:0.82em">
-      ✕ Cancel &amp; start over
+      Cancel &amp; start over
     </button>
   </div>
   <div style="font-size:0.74em; color:var(--text-dim); margin-top:8px">
-    This runs the {{ run_state.modules_pending | length if run_state.modules_pending else '' }} analysis modules — it does not start a new scan.
+    This runs the {{ run_state.modules_pending | length if run_state.modules_pending else '' }} analysis modules - it does not start a new scan.
   </div>
 
 </div><!-- Stage 1 briefing card -->
@@ -172,7 +172,7 @@
 <!-- ── Stage 2 Gate ───────────────────────────────────────────────────────── -->
 <div class="stage-gate" id="stage-gate-banner">
   <div class="stage-gate-header">
-    <div class="stage-gate-title">✓ ANALYSIS COMPLETE</div>
+    <div class="stage-gate-title">ANALYSIS COMPLETE</div>
     <div class="stage-gate-number">{{ run_state.stage_number }}</div>
   </div>
   <div class="stage-gate-summary">{{ run_state.gate_message }}</div>
@@ -192,13 +192,13 @@
             hx-target="#page-content"
             hx-swap="innerHTML"
             hx-select="#page-content">
-      📄 Generate Report
+      Generate Report
     </button>
     <button class="btn"
             hx-post="/intelligence/run/{{ run_state.run_id }}/cancel"
             hx-swap="none"
             style="font-size:0.82em">
-      ✕ Discard
+      Discard
     </button>
   </div>
 </div>
@@ -213,7 +213,7 @@
             display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px">
   <div style="font-size:0.82em; color:var(--text-muted)">
     Report generated. Not satisfied? Regenerate from current analysis without re-running data collection.
-    {% if regen_triggered %}<span style="color:var(--accent); margin-left:8px">✓ Regenerating…</span>{% endif %}
+    {% if regen_triggered %}<span style="color:var(--accent); margin-left:8px">Regenerating…</span>{% endif %}
   </div>
   <button class="btn"
           hx-post="/intelligence/gate/{{ run_state.run_id }}/regenerate-report"
@@ -254,11 +254,11 @@
     {% for mid in run_state.modules_requested %}
       {% set label = (all_modules[mid].label if all_modules.get(mid) else mid) %}
       {% if mid in run_state.modules_complete %}
-        <span style="font-size:0.72em; padding:2px 8px; border-radius:10px; background:rgba(74,222,128,0.12); color:#4ade80; border:1px solid rgba(74,222,128,0.3)">✓ {{ label }}</span>
+        <span style="font-size:0.72em; padding:2px 8px; border-radius:10px; background:rgba(74,222,128,0.12); color:#4ade80; border:1px solid rgba(74,222,128,0.3)">{{ label }}</span>
       {% elif mid in run_state.modules_running %}
         <span style="font-size:0.72em; padding:2px 8px; border-radius:10px; background:rgba(250,204,21,0.15); color:#facc15; border:1px solid rgba(250,204,21,0.4)"><span class="spinner" style="width:8px;height:8px"></span> {{ label }}</span>
       {% elif mid in run_state.modules_failed %}
-        <span style="font-size:0.72em; padding:2px 8px; border-radius:10px; background:rgba(248,113,113,0.12); color:#f87171; border:1px solid rgba(248,113,113,0.3)">✗ {{ label }}</span>
+        <span style="font-size:0.72em; padding:2px 8px; border-radius:10px; background:rgba(248,113,113,0.12); color:#f87171; border:1px solid rgba(248,113,113,0.3)">{{ label }}</span>
       {% else %}
         <span style="font-size:0.72em; padding:2px 8px; border-radius:10px; background:var(--bg-3); color:var(--text-dim); border:1px solid var(--border)">· {{ label }}</span>
       {% endif %}
@@ -269,7 +269,7 @@
   <!-- Stuck-run warning (>60 min in non-terminal state) -->
   {% if run_state.elapsed_minutes is defined and run_state.elapsed_minutes > 60 %}
   <div style="margin-top:12px; padding:8px 12px; background:var(--bg-3); border-radius:6px; border-left:3px solid var(--danger); font-size:0.82em; color:var(--danger)">
-    ⚠️ This run has been active for {{ run_state.elapsed_minutes|int }} minutes and may be stuck.
+    This run has been active for {{ run_state.elapsed_minutes|int }} minutes and may be stuck.
     Cancel it and start a new analysis.
   </div>
   {% endif %}
@@ -280,7 +280,7 @@
             hx-confirm="Cancel this analysis run?"
             hx-target="#page-content"
             hx-swap="innerHTML">
-      ✕ Cancel Run
+      Cancel Run
     </button>
     <a href="/intelligence" class="btn btn-secondary btn-sm">↩ New Analysis</a>
   </div>
@@ -319,12 +319,12 @@
     </div>
     <input type="hidden" id="run-mode-input" value="{{ run_mode or 'gated' }}">
     <button class="btn btn-primary" onclick="startRun()">
-      ⚡ Run Analysis
+      Run Analysis
     </button>
     <button class="btn" onclick="runFinancialAnalysis()"
-            title="Instant local financial analysis — no AI, no wait"
+            title="Instant local financial analysis - no AI, no wait"
             style="font-size:0.85em">
-      📊 Financial Analysis
+      Financial Analysis
     </button>
   </div>
   {% endif %}
@@ -336,7 +336,7 @@
 {% if not active_client %}
 <!-- No client selected -->
 <div class="empty-state">
-  <div class="empty-icon">⚡</div>
+  <div class="empty-icon"></div>
   <div class="empty-text">SashaOps hasn't selected a client yet. Choose a client from the sidebar to begin.</div>
   <a href="/dashboard" class="btn btn-primary">Go to Dashboard →</a>
 </div>
@@ -356,7 +356,7 @@
     <div>
       <label class="form-label">Market</label>
       <div class="form-input" style="width:200px; display:flex; align-items:center; gap:8px; background:var(--bg-3); cursor:default">
-        🇵🇰 Pakistan (PSX)
+        Pakistan (PSX)
       </div>
     </div>
   </div>
@@ -377,7 +377,7 @@
   {% for doc in client_documents %}
   <label class="doc-chip">
     <input type="checkbox" class="doc-check" value="{{ doc.id }}" checked>
-    <span>📄 {{ doc.filename }}</span>
+    <span>{{ doc.filename }}</span>
     <span style="color:var(--text-dim); font-size:0.85em">{{ doc.doc_type }}</span>
   </label>
   {% endfor %}
@@ -423,9 +423,9 @@
     {% if run_state %}
     <div class="module-status">
       {% if module.id in run_state.modules_complete %}
-      <span class="status-complete">✓ Complete</span>
+      <span class="status-complete">Complete</span>
       {% elif module.id in run_state.modules_failed %}
-      <span class="status-failed">✗ Failed</span>
+      <span class="status-failed">Failed</span>
       {% elif module.id in run_state.modules_running %}
       <span class="status-running"><span class="spinner"></span> Running</span>
       {% else %}
@@ -464,7 +464,7 @@
 {% if analysis_results %}
 <div id="results-area" style="margin-top:32px">
   <div style="margin-bottom:12px; font-size:0.8em; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px">
-    Analysis Results — {{ last_business }}
+    Analysis Results - {{ last_business }}
   </div>
 
   <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px">
@@ -595,7 +595,7 @@ function docSelectAll(state) {
   document.querySelectorAll('.doc-check').forEach(c => c.checked = state);
 }
 
-// Module info popup — explains exactly what each analysis produces
+// Module info popup - explains exactly what each analysis produces
 function showModuleInfo(evt, modId) {
   evt.stopPropagation();   // don't toggle module selection
   const src = document.getElementById('modinfo-' + modId);

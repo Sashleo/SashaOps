@@ -143,7 +143,7 @@ class DataCollectionSummary:
     def quality_label(self) -> str:
         if self.data_quality_score >= 0.8: return "Strong"
         if self.data_quality_score >= 0.5: return "Adequate"
-        return "Limited — consider uploading additional documents"
+        return "Limited - consider uploading additional documents"
 
 
 @dataclass
@@ -224,7 +224,7 @@ class RunState:
     @property
     def next_action_label(self) -> str:
         if self.stage == RunStage.STAGE1_COMPLETE:
-            return "I've reviewed this — Begin Analysis →"
+            return "I've reviewed this - Begin Analysis →"
         if self.stage == RunStage.STAGE2_COMPLETE:
             return "Generate Report →"
         if self.stage == RunStage.PAUSED:
@@ -236,9 +236,9 @@ class RunState:
         labels = {
             RunStage.NOT_STARTED:       "Not started",
             RunStage.STAGE1_COLLECTING: "Collecting data...",
-            RunStage.STAGE1_COMPLETE:   "Stage 1 complete — awaiting review",
+            RunStage.STAGE1_COMPLETE:   "Stage 1 complete - awaiting review",
             RunStage.STAGE2_ANALYSING:  "Analysing...",
-            RunStage.STAGE2_COMPLETE:   "Stage 2 complete — awaiting review",
+            RunStage.STAGE2_COMPLETE:   "Stage 2 complete - awaiting review",
             RunStage.STAGE3_REPORTING:  "Generating report...",
             RunStage.COMPLETE:          "Complete",
             RunStage.PAUSED:            "Paused",
@@ -393,10 +393,10 @@ def complete_stage1(state: RunState, summary: DataCollectionSummary) -> RunState
 
     if state.mode == RunMode.GATED:
         state.stage = RunStage.STAGE1_COMPLETE
-        log.info("Stage 1 complete — awaiting user approval", run_id=state.run_id)
+        log.info("Stage 1 complete - awaiting user approval", run_id=state.run_id)
     else:
         state.stage = RunStage.STAGE2_ANALYSING
-        log.info("Stage 1 complete — auto-advancing (EXPRESS mode)", run_id=state.run_id)
+        log.info("Stage 1 complete - auto-advancing (EXPRESS mode)", run_id=state.run_id)
 
     _save_run(state)
     return state
@@ -429,10 +429,10 @@ def complete_stage2(state: RunState, summary: AnalysisSummary) -> RunState:
 
     if state.mode == RunMode.GATED:
         state.stage = RunStage.STAGE2_COMPLETE
-        log.info("Stage 2 complete — awaiting user approval", run_id=state.run_id)
+        log.info("Stage 2 complete - awaiting user approval", run_id=state.run_id)
     else:
         state.stage = RunStage.STAGE3_REPORTING
-        log.info("Stage 2 complete — auto-advancing (EXPRESS mode)", run_id=state.run_id)
+        log.info("Stage 2 complete - auto-advancing (EXPRESS mode)", run_id=state.run_id)
 
     _save_run(state)
     return state

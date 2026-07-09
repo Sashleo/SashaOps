@@ -161,7 +161,7 @@ def build_retry_prompt(original_prompt: str, result: ValidationResult) -> str:
     return (
         original_prompt
         + "\n\n[CORRECTION REQUIRED] Your previous response contained the following "
-        "privacy violations. Use ONLY the {{TOKEN_*}} placeholders provided — "
+        "privacy violations. Use ONLY the {{TOKEN_*}} placeholders provided - "
         "no raw figures, no company names, no proper nouns outside the given context. "
         "Violations:\n"
         + result.violation_summary()

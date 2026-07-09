@@ -189,7 +189,7 @@ async def client_peek(request: Request, client_id: str):
         rdate = (last_report["created_at"] or "")[:10]
         report_section = f"""
         <div style="margin:10px 0; font-size:0.82em; color:var(--text-muted)">
-          📄 Last report: <strong style="color:var(--text-secondary)">{last_report["business_name"]}</strong> — {rdate}
+          Last report: <strong style="color:var(--text-secondary)">{last_report["business_name"]}</strong> - {rdate}
         </div>"""
 
     html = f"""

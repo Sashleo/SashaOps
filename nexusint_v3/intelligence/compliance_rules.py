@@ -190,7 +190,7 @@ SECTOR_COMPLIANCE = {
             "Pharmacovigilance: Qualified Person for Pharmacovigilance (QPPV) mandatory",
             "Adverse Drug Reaction reporting: serious cases within 15 days to DRAP",
             "Serialisation: 2D DataMatrix barcodes on secondary packaging (SRO 470/2017)",
-            "Record retention: manufacturing logs, QC reports, distribution — 5 years minimum",
+            "Record retention: manufacturing logs, QC reports, distribution - 5 years minimum",
             "API imports: Form-8 licensing required",
             "Labelling: bilingual (Urdu + English) per DRAP guidelines",
         ],
@@ -223,7 +223,7 @@ SECTOR_COMPLIANCE = {
             "Continuous Emission Monitoring Systems (CEMS) for large plants",
             "Annual environmental audit mandatory",
             "Price coordination prohibited under Competition Act 2010",
-            "Worker safety: Factories Act 1934 — PPE, ventilation, dust control",
+            "Worker safety: Factories Act 1934 - PPE, ventilation, dust control",
             "EOBI and ESSI social-security contributions",
         ],
         "key_risks": [
@@ -704,7 +704,7 @@ def get_compliance_checklist_text(
     lines.append("")
     if not is_listed:
         lines += [
-            "> Note: Unlisted company — PSX disclosure obligations do not apply. "
+            "> Note: Unlisted company - PSX disclosure obligations do not apply. "
             "SECP private company regulations govern corporate compliance.",
             "",
         ]
@@ -725,7 +725,7 @@ def get_compliance_checklist_text(
         lines += [f"- {g}" for g in universal["corporate_governance"][:6]]
     else:
         lines += [f"**Primary Regulator:** {universal['regulator']}",
-                  "_Sector not matched to a specialised profile — universal obligations apply._", ""]
+                  "_Sector not matched to a specialised profile - universal obligations apply._", ""]
         lines += ["### Governing Laws"]
         lines += [f"- {law}" for law in universal["governing_laws"]]
         lines += ["", "### Mandatory Filings"]

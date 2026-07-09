@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Memory Lab — SashaOps{% endblock %}
+{% block title %}Memory Lab - SashaOps{% endblock %}
 
 {% block content %}
 
 <div class="page-header">
   <div>
-    <div class="page-title">🧠 Memory Lab</div>
+    <div class="page-title">Memory Lab</div>
     <div class="page-subtitle">Three-tier intelligence memory system</div>
   </div>
 </div>
@@ -39,16 +39,16 @@
   <div class="card-title" style="margin-bottom:8px">How Memory Lab works</div>
   <div style="font-size:0.85em; color:var(--text-muted); line-height:1.7">
     After each completed analysis module, SashaOps extracts 2–3 structural patterns
-    (anonymised — no company names or figures) and stores them here.
+    (anonymised - no company names or figures) and stores them here.
     These patterns are then injected into future analyses so Gemini builds on prior findings
     rather than starting cold each time.
     <br><br>
-    <strong style="color:var(--text-secondary)">Tier 1</strong> — client-specific insights, encrypted, visible only to that client.<br>
-    <strong style="color:var(--text-secondary)">Tier 2</strong> — industry-level patterns, anonymised, shared within an industry group.<br>
-    <strong style="color:var(--text-secondary)">Tier 3</strong> — cross-industry global patterns, extracted by the Pattern Learning engine below.
+    <strong style="color:var(--text-secondary)">Tier 1</strong> - client-specific insights, encrypted, visible only to that client.<br>
+    <strong style="color:var(--text-secondary)">Tier 2</strong> - industry-level patterns, anonymised, shared within an industry group.<br>
+    <strong style="color:var(--text-secondary)">Tier 3</strong> - cross-industry global patterns, extracted by the Pattern Learning engine below.
     <br><br>
     {% if stats.total == 0 %}
-    <span style="color:var(--text-dim)">Memory is empty — it fills automatically as analyses complete.</span>
+    <span style="color:var(--text-dim)">Memory is empty - it fills automatically as analyses complete.</span>
     {% endif %}
   </div>
 </div>
@@ -75,7 +75,7 @@
   <div style="font-size:0.82em; color:var(--text-dim); padding:10px 14px; background:var(--bg-2); border-radius:4px">
     Waiting for more completed analyses.
     {{ 10 - (stats.industry_level or 0) }} more industry-level entries needed.
-    This fills automatically — no action required.
+    This fills automatically - no action required.
   </div>
   {% endif %}
 
@@ -107,7 +107,7 @@
 <!-- Client memory controls -->
 {% if active_client %}
 <div class="card mt-24">
-  <div class="card-title">Client Memory — {{ active_client.name }}</div>
+  <div class="card-title">Client Memory - {{ active_client.name }}</div>
   <div style="font-size:0.85em; color:var(--text-muted); margin-bottom:16px">
     Clear all Tier 1 memories for this client. This cannot be undone.
   </div>

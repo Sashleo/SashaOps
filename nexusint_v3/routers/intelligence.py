@@ -408,7 +408,7 @@ async def quick_financial_analysis(
                     (_co["sector_name"], ticker),
                 ).fetchall()
                 if _ps:
-                    _lines = [f"PSX SECTOR PEERS — {_co['sector_name']}\n"]
+                    _lines = [f"PSX SECTOR PEERS - {_co['sector_name']}\n"]
                     for p in _ps:
                         _lines.append(f"  {p['symbol']:8} {p['company_name'][:35]}")
                     peers = "\n".join(_lines)
@@ -436,8 +436,8 @@ async def quick_financial_analysis(
     if result.get("_raw", {}).get("_stub") or result.get("source") == "psx_companies_stub":
         stub_note = (
             '<div class="alert alert-warning" style="margin-top:8px;font-size:0.8em">'
-            '⚠ Figures estimated from PSX market data (no detailed financials scraped). '
-            'Ratios are indicative — verify against official filings.</div>'
+            'Figures estimated from PSX market data (no detailed financials scraped). '
+            'Ratios are indicative - verify against official filings.</div>'
         )
 
     html = f"""
@@ -450,7 +450,7 @@ async def quick_financial_analysis(
           </span>
         </div>
         <div style="font-size:1.1em;font-weight:700;color:{health_col}">
-          {f"{health:.1f}" if health is not None else "—"}/10
+          {f"{health:.1f}" if health is not None else "-"}/10
         </div>
       </div>
       {stub_note}

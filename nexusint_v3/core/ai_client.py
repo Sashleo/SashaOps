@@ -76,7 +76,7 @@ def _generate_grounded(model: "genai.GenerativeModel", prompt, use_search: bool)
     except Exception as e:
         if _is_tool_error(e):
             _grounding_unsupported = True
-            log.warning("Search grounding unsupported on this SDK/model — "
+            log.warning("Search grounding unsupported on this SDK/model - "
                         "running without it for the rest of the session",
                         error=str(e)[:120])
             return model.generate_content(prompt)
@@ -186,7 +186,7 @@ async def stream_analysis(
     if ai_mode == "cloud":
         if sanitiser is None:
             raise RuntimeError(
-                "SECURITY: Cloud AI call blocked — no PromptSanitiser provided. "
+                "SECURITY: Cloud AI call blocked - no PromptSanitiser provided. "
                 "All cloud prompts must be sanitised before leaving this machine. "
                 "Build a sanitiser via build_sanitiser_for_client() and pass it here."
             )
@@ -205,7 +205,7 @@ async def stream_analysis(
             response = model.generate_content(full_prompt, tools=[SEARCH_TOOL], stream=True)
         except Exception as tool_err:
             if _is_tool_error(tool_err):
-                log.warning("Search grounding unavailable (stream) — no tools",
+                log.warning("Search grounding unavailable (stream) - no tools",
                             error=str(tool_err)[:120])
                 response = model.generate_content(full_prompt, stream=True)
             else:
@@ -237,7 +237,7 @@ async def stream_analysis(
     except Exception as e:
         error_msg = _friendly_error(e)
         log.error("Gemini stream failed", error=str(e), module=module_id)
-        yield f"\n\n⚠️ Analysis error: {error_msg}"
+        yield f"\n\nAnalysis error: {error_msg}"
 
 
 def run_analysis(
@@ -271,7 +271,7 @@ def run_analysis(
     if ai_mode == "cloud":
         if sanitiser is None:
             raise RuntimeError(
-                "SECURITY: Cloud AI call blocked — no PromptSanitiser provided. "
+                "SECURITY: Cloud AI call blocked - no PromptSanitiser provided. "
                 "Build a sanitiser via build_sanitiser_for_client() and pass it here."
             )
         full_prompt = sanitiser.sanitise(raw_prompt)

@@ -122,7 +122,7 @@ def _render_form(
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
             <div class="card-title" style="margin:0">Sanitisation Result</div>
             <div style="font-size:0.8em;color:{status_colour}">
-              {'✓ Primary company anonymised' if (summary or {}).get('primary_company_anonymised') else '⚠ Primary company NOT found in output'}
+              {'Primary company anonymised' if (summary or {}).get('primary_company_anonymised') else 'Primary company NOT found in output'}
             </div>
           </div>
 
@@ -156,7 +156,7 @@ def _render_form(
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Prompt Sanitiser Test — SashaOps</title>
+  <title>Prompt Sanitiser Test - SashaOps</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -291,7 +291,7 @@ async def tokensheet_inspector(request: Request, run_id: str, module: str = ""):
             f'<div style="margin-bottom:16px;padding:10px 14px;background:var(--bg-3);'
             f'border-radius:4px;border-left:3px solid {colour};font-size:0.82em">'
             f'<strong style="color:{colour}">{"PASS" if passed else "FAIL"}</strong> '
-            f'— strategy: <code>{_esc(strat)}</code>'
+            f'- strategy: <code>{_esc(strat)}</code>'
             + ("".join(f'<div style="color:#f87171;margin-top:4px">• {_esc(v)}</div>' for v in viols) if viols else "")
             + "</div>"
         )
@@ -310,7 +310,7 @@ async def tokensheet_inspector(request: Request, run_id: str, module: str = ""):
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Token Sheet — {_esc(run_id[:8])} — SashaOps</title>
+  <title>Token Sheet - {_esc(run_id[:8])} - SashaOps</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -435,7 +435,7 @@ async def test_scrapers(request: Request):
     {sbp_panel}
     <table><tr><th>Scraper</th><th>Status</th><th>Rows</th><th>Detail</th></tr>{rows_html}</table>
     <p style="color:#666;margin-top:2rem">
-    Impact map — SBP→banks · FBR→PSO/SNGP · NEPRA→HUBC/KAPCO/KEL ·
+    Impact map - SBP→banks · FBR→PSO/SNGP · NEPRA→HUBC/KAPCO/KEL ·
     OGRA→PSO/OGDC · PBS LSMI→LUCK/FFC/NML · PTA→PTCL/TRG · World Bank→KSE-100 macro.
     </p></body></html>"""
     return HTMLResponse(content=page)

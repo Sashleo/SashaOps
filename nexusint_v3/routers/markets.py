@@ -187,7 +187,7 @@ async def fetch_market_data(
             f'<a href="{exchange_url}" target="_blank" rel="noopener" style="color:var(--accent)">'
             f'View live on {exchange_name} ↗</a>'
         ) if exchange_url else ""
-        indices_html = f'<div class="empty-state"><div class="empty-icon">📈</div><div class="empty-text">Index data not yet available. Scraper runs every 6 hours.</div>{fallback}</div>'
+        indices_html = f'<div class="empty-state"><div class="empty-text">Index data not yet available. Scraper runs every 6 hours.</div>{fallback}</div>'
 
     forex_html   = _render_forex_section(forex_rates, market_region)
     movers_html  = _render_movers_section(exchange_id)
@@ -195,7 +195,7 @@ async def fetch_market_data(
 
     return HTMLResponse(
         f'<div style="margin-bottom:8px;font-size:0.8em;color:var(--text-muted);'
-        f'text-transform:uppercase;letter-spacing:1px">Market Indices — '
+        f'text-transform:uppercase;letter-spacing:1px">Market Indices - '
         f'{market_region.replace("_"," ").title()}</div>'
         f'{stats_html}'
         f'{indices_html}'
@@ -224,7 +224,7 @@ async def list_companies(
         companies = [c for c in companies if s in c.get("company_name", "").lower() or s in c.get("ticker", "").lower()]
 
     if not companies:
-        return HTMLResponse('<div class="empty-state"><div class="empty-icon">🏢</div><div class="empty-text">No companies found. Exchange data populates after first scraper cycle.</div></div>')
+        return HTMLResponse('<div class="empty-state"><div class="empty-text">No companies found. Exchange data populates after first scraper cycle.</div></div>')
 
     rows = ""
     for c in companies:
@@ -241,19 +241,19 @@ async def list_companies(
             f'<button class="btn btn-xs" style="padding:2px 8px;font-size:0.75em" '
             f'hx-delete="/markets/watchlist/{exchange_id}/{c["ticker"]}" '
             f'hx-target="closest tr" hx-swap="outerHTML" '
-            f'title="Remove from watchlist">★</button>'
+            f'title="Remove from watchlist">On</button>'
         ) if watched else (
             f'<button class="btn btn-xs" style="padding:2px 8px;font-size:0.75em;opacity:0.4" '
             f'hx-post="/markets/watchlist/add" '
             f'hx-vals=\'{{"exchange_id":"{exchange_id}","ticker":"{c["ticker"]}","company_name":"{c.get("company_name","")}"}}\'  '
             f'hx-target="closest tr" hx-swap="none" '
-            f'hx-on::after-request="this.style.opacity=\'1\';this.textContent=\'★\'" '
-            f'title="Add to watchlist">☆</button>'
+            f'hx-on::after-request="this.style.opacity=\'1\';this.textContent=\'On\'" '
+            f'title="Add to watchlist">Add</button>'
         )
         rows += (
             f'<tr><td class="text-mono" style="font-size:0.85em">{c["ticker"]}</td>'
             f'<td style="font-size:0.85em">{c.get("company_name","")}</td>'
-            f'<td style="font-size:0.85em">{c.get("sector","—")}</td>'
+            f'<td style="font-size:0.85em">{c.get("sector","-")}</td>'
             f'<td class="text-mono" style="font-size:0.85em">{price_str}</td>'
             f'<td style="font-size:0.85em">{change_str}</td>'
             f'<td style="font-size:0.82em;color:var(--text-muted)">{mcap_str}</td>'
@@ -360,7 +360,7 @@ async def analyse_local(
                     (_sector, ticker),
                 ).fetchall()
                 if _prows:
-                    _plines = [f"PSX SECTOR PEERS — {_sector}\n"]
+                    _plines = [f"PSX SECTOR PEERS - {_sector}\n"]
                     for _p in _prows:
                         _peval = (_p["price"] / _p["eps"]) if (_p["price"] and _p["eps"] and _p["eps"] > 0) else None
                         _pe = f"  P/E {_peval:.1f}x" if _peval else "  P/E N/A"
@@ -410,7 +410,7 @@ async def analyse_local(
         return f'<span>{v:.1f}</span>'
 
     health = raw.get("health_score")
-    health_str   = f"{health:.1f}" if health is not None else "—"
+    health_str   = f"{health:.1f}" if health is not None else "-"
     health_color = "#4ade80" if (health or 0) >= 7 else ("#facc15" if (health or 0) >= 5 else "#f87171")
     health_label = "Strong" if (health or 0) >= 7 else ("Adequate" if (health or 0) >= 5 else "Weak")
 
@@ -424,14 +424,14 @@ async def analyse_local(
     watch_btn   = (
         f'<button class="btn" hx-delete="/markets/watchlist/{exchange_id}/{ticker}" '
         f'hx-target="#local-analysis-result" hx-swap="none" '
-        f'hx-on::after-request="document.querySelector(\'#watch-btn-{ticker}\').textContent=\'☆ Add to Watchlist\'"'
-        f' id="watch-btn-{ticker}">★ On Watchlist</button>'
+        f'hx-on::after-request="document.querySelector(\'#watch-btn-{ticker}\').textContent=\'Add to Watchlist\'"'
+        f' id="watch-btn-{ticker}">On Watchlist</button>'
     ) if watched else (
         f'<button class="btn" hx-post="/markets/watchlist/add" '
         f'hx-vals=\'{{"exchange_id":"{exchange_id}","ticker":"{ticker}","company_name":"{result.get("company","")}"}}\' '
         f'hx-target="#local-analysis-result" hx-swap="none" '
-        f'hx-on::after-request="document.querySelector(\'#watch-btn-{ticker}\').textContent=\'★ On Watchlist\'"'
-        f' id="watch-btn-{ticker}">☆ Add to Watchlist</button>'
+        f'hx-on::after-request="document.querySelector(\'#watch-btn-{ticker}\').textContent=\'On Watchlist\'"'
+        f' id="watch-btn-{ticker}">Add to Watchlist</button>'
     )
 
     from urllib.parse import quote_plus as _qp
@@ -444,17 +444,17 @@ async def analyse_local(
         errors_html = f'<div class="alert alert-warning" style="margin-top:8px;font-size:0.8em">Partial data: {errs}</div>'
 
     _SOURCE_LABELS = {
-        "psx_summary":            ("📄 PSX summary", "badge-gray"),
-        "psx_annual_report":      ("📑 PSX annual report", "badge-green"),
-        "psx_annual_report_ocr":  ("🔍 PSX report (OCR — verify figures)", "badge-yellow"),
-        "psx":                    ("📄 PSX", "badge-gray"),
-        "psx_scraped":            ("📊 PSX scraped", "badge-gray"),
+        "psx_summary":            ("PSX summary", "badge-gray"),
+        "psx_annual_report":      ("PSX annual report", "badge-green"),
+        "psx_annual_report_ocr":  ("PSX report (OCR - verify figures)", "badge-yellow"),
+        "psx":                    ("PSX", "badge-gray"),
+        "psx_scraped":            ("PSX scraped", "badge-gray"),
     }
     src_label, src_badge = _SOURCE_LABELS.get(result.get("source", ""), ("PSX", "badge-gray"))
     ocr_note = ""
     if result.get("ocr_derived"):
         ocr_note = ('<div class="alert alert-warning" style="margin-top:8px;font-size:0.78em">'
-                    '🔍 Balance-sheet figures were read from a scanned report via OCR — '
+                    'Balance-sheet figures were read from a scanned report via OCR - '
                     'treat the deeper ratios (current ratio, debt/equity, Altman Z, ROE) as '
                     'indicative and verify against the source filing.</div>')
 
@@ -510,7 +510,7 @@ async def analyse_local(
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
         <div style="background:var(--bg-2);border-radius:6px;padding:12px">
           <div style="font-size:0.7em;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">
-            DCF Valuation — WACC {result.get("wacc","?")}
+            DCF Valuation - WACC {result.get("wacc","?")}
           </div>
           <div style="display:flex;gap:16px;align-items:center">
             <div style="text-align:center">
@@ -536,8 +536,8 @@ async def analyse_local(
               <span style="color:{z_color};font-weight:600">{z_str} ({result.get("altman_zone","N/A")})</span>
             </div>
           </div>
-          {"".join(f'<div style="font-size:0.78em;color:#f87171;margin-top:2px">⚠ {r}</div>' for r in result.get("key_risks",[])[:3])}
-          {"".join(f'<div style="font-size:0.78em;color:#4ade80;margin-top:2px">✓ {s}</div>' for s in result.get("key_strengths",[])[:2])}
+          {"".join(f'<div style="font-size:0.78em;color:#f87171;margin-top:2px">Risk: {r}</div>' for r in result.get("key_risks",[])[:3])}
+          {"".join(f'<div style="font-size:0.78em;color:#4ade80;margin-top:2px">Strength: {s}</div>' for s in result.get("key_strengths",[])[:2])}
         </div>
       </div>
 
@@ -639,7 +639,7 @@ async def watchlist_fragment(request: Request):
     for item in items[:12]:
         from database.exchange_data import get_latest_company_price
         price = get_latest_company_price(item["exchange_id"], item["ticker"])
-        price_str  = f"{price['close_price']:,.2f}" if price and price.get("close_price") else "—"
+        price_str  = f"{price['close_price']:,.2f}" if price and price.get("close_price") else "-"
         change_str = ""
         if price and price.get("change_pct") is not None:
             cls  = "color:#4ade80" if price["change_pct"] >= 0 else "color:#f87171"
@@ -718,7 +718,7 @@ def _render_index_row(idx) -> str:
     ytd_str = ""
     if idx.change_pct_ytd is not None:
         ytd_str = f'<div style="font-size:0.8em;color:var(--text-muted)">YTD: {idx.change_pct_ytd:+.1f}%</div>'
-    price_str = f"{idx.current_price:,.2f}" if idx.current_price else "—"
+    price_str = f"{idx.current_price:,.2f}" if idx.current_price else "-"
     partial   = '<span class="badge badge-yellow" title="Partial data">~</span>' if idx.is_partial else ""
     return f"""
     <div class="ticker-row">
@@ -730,7 +730,7 @@ def _render_index_row(idx) -> str:
 
 
 def _render_db_index_row(row: dict) -> str:
-    price_str = f"{row['close_price']:,.2f}" if row.get("close_price") else "—"
+    price_str = f"{row['close_price']:,.2f}" if row.get("close_price") else "-"
     chg_str   = ""
     if row.get("change_pct") is not None:
         cls  = "ticker-change-pos" if row["change_pct"] >= 0 else "ticker-change-neg"
@@ -829,11 +829,11 @@ def _render_movers_section(exchange_id: str) -> str:
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div style="background:var(--bg-2);border-radius:var(--radius);padding:10px">
           <div style="font-size:0.7em;color:#4ade80;margin-bottom:4px">GAINERS</div>
-          {g_html or '<div style="font-size:0.8em;color:var(--text-dim)">—</div>'}
+          {g_html or '<div style="font-size:0.8em;color:var(--text-dim)">-</div>'}
         </div>
         <div style="background:var(--bg-2);border-radius:var(--radius);padding:10px">
           <div style="font-size:0.7em;color:#f87171;margin-bottom:4px">LOSERS</div>
-          {l_html or '<div style="font-size:0.8em;color:var(--text-dim)">—</div>'}
+          {l_html or '<div style="font-size:0.8em;color:var(--text-dim)">-</div>'}
         </div>
       </div>
     </div>"""
@@ -995,7 +995,7 @@ def _render_financial_table_html(fin_data: dict, label: str) -> str:
         for p in periods:
             v = fin_data[metric].get(p)
             if v is None:
-                cell_str = "—"
+                cell_str = "-"
                 color = "var(--text-dim)"
             elif isinstance(v, float):
                 cell_str = f"{v:,.2f}" if abs(v) < 1e6 else f"{v/1e6:,.1f}M"
@@ -1093,7 +1093,6 @@ async def industry_sectors(
     if not sectors:
         return HTMLResponse(
             '<div class="empty-state">'
-            '<div class="empty-icon">📊</div>'
             '<div class="empty-text">No sector data returned. PSX market may be closed.</div>'
             '</div>'
         )
@@ -1103,7 +1102,7 @@ async def industry_sectors(
     for sec in sectors:
         avg_ch = sec.get("avg_change")
         ch_color = "#4ade80" if (avg_ch or 0) >= 0 else "#f87171"
-        ch_str   = f'<span style="color:{ch_color};font-weight:600">{avg_ch:+.2f}</span>' if avg_ch is not None else "—"
+        ch_str   = f'<span style="color:{ch_color};font-weight:600">{avg_ch:+.2f}</span>' if avg_ch is not None else "-"
         vol_str  = _fmt_num(sec.get("total_vol"))
         sector_name = sec["sector"]
         sector_attr = _html.escape(sector_name, quote=True)
@@ -1240,7 +1239,7 @@ def _render_clusters_html(clusters: list) -> str:
             f'<button class="btn" style="padding:2px 8px;font-size:0.72em;opacity:0.5" '
             f'hx-delete="/markets/clusters/{cid}" '
             f'hx-target="#clusters-panel" hx-swap="innerHTML" '
-            f'title="Delete group">✕ Delete</button>'
+            f'title="Delete group">Delete</button>'
             f'</div>'
             f'<div style="margin-bottom:8px;min-height:24px">{ticker_tags or empty_msg}</div>'
             f'<div style="display:flex;gap:6px;align-items:center">'

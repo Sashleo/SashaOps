@@ -2,7 +2,10 @@
 config/modules.py — All 11 analysis module definitions.
 
 Each module has: metadata, system prompt, and a prompt builder function.
-All prompts are designed for Google Gemini with Search grounding enabled.
+Prompts instruct the model to reason over pre-computed, locally-collected data
+(PSX financials, FinBERT scores, ranked news, compliance rules); they do not rely
+on live web-search grounding. Live web data, where used, comes from DuckDuckGo in
+the collection stage, not from the model.
 """
 
 from dataclasses import dataclass
@@ -27,126 +30,111 @@ MODULES: dict[str, Module] = {
 
     "overview": Module(
         id="overview",
-        icon="🏢",
+        icon="",
         label="Overview",
         group="Core",
         color="#e8ff47",
-        description="Full business profile, model, revenue, leadership, health score 1-10",
+        description="Company profile: business model, revenue, structure, leadership, PSX data, health score",
         system_prompt=(
-            "You are a world-class business analyst with access to Google Search. "
-            "Analyse ANY business — startup, SME, or corporation. "
-            "Search by name, website, LinkedIn, news, regulatory filings, Crunchbase. "
-            "NEVER say you cannot find a company. Search harder with different queries. "
-            "Deliver: business model, estimated revenue, employee count, founding year, "
-            "HQ, leadership team, key products/services, recent strategic moves, "
-            "SWOT analysis, and a health score 1-10 with specific reasoning. "
-            "Use **bold** for section headers. Be specific with numbers and sources."
+            "Write a structured company overview using only the pre-computed data provided. "
+            "Sections: business description, revenue and scale, organisational structure, "
+            "key leadership (from PSX data), financial health score with rationale. "
+            "State figures as provided. Do not search for additional information. "
+            "Do not add strategy recommendations. Use plain prose, no bullet spam."
         ),
         prompt_builder=lambda b, c, m: (
-            f'Deep business intelligence analysis of "{b}"{f" operating in {c}" if c else ""}.\n\n'
-            f'Search their website, LinkedIn, news, regulatory filings, Crunchbase, and any '
-            f'public databases relevant to their market.\n\n'
+            f'Business overview of "{b}"{f" operating in {c}" if c else ""}.\n\n'
+            f'Use only the PSX profile, computed financials, and health score provided in the context.\n\n'
             f'Deliver:\n'
-            f'1. **Business Model** — how they make money\n'
-            f'2. **Scale** — revenue estimate, employees, markets\n'
-            f'3. **Leadership** — key executives and their background\n'
-            f'4. **Products/Services** — what they actually sell\n'
-            f'5. **Recent News** — last 90 days of significant developments\n'
-            f'6. **SWOT** — specific strengths, weaknesses, opportunities, threats\n'
-            f'7. **Health Score** — 1 to 10 with detailed reasoning\n\n'
+            f'1. **Business Model** - how they make money, from the provided profile\n'
+            f'2. **Scale** - revenue and size from the computed financials\n'
+            f'3. **Leadership** - key executives present in the PSX data\n'
+            f'4. **Products/Services** - what they sell, per the profile\n'
+            f'5. **Recent Developments** - from the provided PSX announcements\n'
+            f'6. **SWOT** - grounded in the computed ratios and signals provided\n'
+            f'7. **Health Score** - restate the provided score with its rationale\n\n'
             f'{m}'
         ),
     ),
 
     "competitors": Module(
         id="competitors",
-        icon="⚔️",
+        icon="",
         label="Competitors",
         group="Core",
         color="#ff6b35",
-        description="Top 5-7 real competitors, market positioning, exploitable gaps",
+        description="PSX sector peers: relative financial positioning from computed ratios",
         system_prompt=(
-            "You are a competitive intelligence specialist with access to Google Search. "
-            "Find REAL competitors — local, regional, or global depending on context. "
-            "For local/small businesses, find local competitors. "
-            "For each competitor: market share estimate, strengths, weaknesses, "
-            "recent moves, pricing model, target customer overlap. "
-            "Build a competitive positioning matrix. "
-            "Identify specific, actionable competitive gaps the target business can exploit."
+            "Write a competitive positioning summary using only the peer comparison data provided. "
+            "Describe how the subject company's margins, leverage, and growth compare to "
+            "sector peers listed in the data. State which peers lead on which metrics. "
+            "Do not name companies not present in the provided peer list. "
+            "Do not recommend strategic actions."
         ),
         prompt_builder=lambda b, c, m: (
-            f'Competitive intelligence analysis for "{b}"{f" in {c}" if c else ""}.\n\n'
-            f'Find their top 5-7 real competitors. Search specifically for their industry '
-            f'and who directly competes with them for customers and revenue.\n\n'
-            f'For each competitor:\n'
-            f'- Market position and estimated market share\n'
-            f'- Core strengths and exploitable weaknesses\n'
-            f'- Recent strategic moves (last 6 months)\n'
-            f'- Pricing strategy and target customer profile\n\n'
-            f'Deliver a positioning matrix and identify 3 specific gaps '
-            f'"{b}" can exploit right now.\n\n'
+            f'Competitive positioning for "{b}"{f" in {c}" if c else ""}.\n\n'
+            f'Use only the PSX sector peer comparison provided in the context.\n\n'
+            f'For each peer in the provided data:\n'
+            f'- Relative margin, leverage, and growth versus the subject company\n'
+            f'- Which peer leads on which metric\n\n'
+            f'Deliver a positioning summary showing where "{b}" sits within its '
+            f'sector on the provided metrics.\n\n'
             f'{m}'
         ),
     ),
 
     "sentiment": Module(
         id="sentiment",
-        icon="🧠",
+        icon="",
         label="Sentiment",
         group="Intelligence",
         color="#a78bfa",
-        description="Consumer, employee, investor, and regulatory sentiment scores",
+        description="PSX announcement classification and news feed sentiment scores from FinBERT",
         system_prompt=(
-            "You are a social media intelligence and sentiment analyst. "
-            "Search Reddit, Twitter/X discussions, news comment sections, forums, "
-            "and review platforms (Glassdoor, Trustpilot, G2, Google Reviews, local equivalents). "
-            "Score each sentiment dimension from -100 (very negative) to +100 (very positive). "
-            "Find viral complaints, praise patterns, and hidden reputation risks. "
-            "This is street intelligence — what balance sheets do not show."
+            "Write a sentiment summary using only the FinBERT scores and announcement "
+            "classifications provided. State the distribution across positive, negative, "
+            "and procedural announcements. Note any high-severity signals. "
+            "Do not reference social media, Reddit, Glassdoor, or any platform "
+            "not present in the provided data."
         ),
         prompt_builder=lambda b, c, m: (
-            f'Social sentiment and reputation analysis for "{b}"{f" in {c}" if c else ""}.\n\n'
-            f'Search Reddit, review platforms, social media, and news discussions.\n\n'
+            f'Sentiment summary for "{b}"{f" in {c}" if c else ""}.\n\n'
+            f'Use only the FinBERT scores, PSX announcement classifications, and ranked '
+            f'news headlines provided in the context below. Do not search social platforms.\n\n'
             f'Deliver:\n'
-            f'1. **Consumer Sentiment** (score -100 to +100) — specific complaint and praise patterns\n'
-            f'2. **Employee Sentiment** (score -100 to +100) — Glassdoor/Indeed findings\n'
-            f'3. **Investor/Analyst Sentiment** (score -100 to +100) — market perception\n'
-            f'4. **Regulatory Perception** (score -100 to +100) — compliance reputation\n'
-            f'5. **Viral Narratives** — what stories are spreading about this business\n'
-            f'6. **Hidden Risks** — reputation threats not yet in mainstream media\n\n'
+            f'1. **Announcement Sentiment** - distribution across positive, negative, and procedural filings\n'
+            f'2. **News Sentiment** - what the ranked headlines and FinBERT scores indicate\n'
+            f'3. **High-Severity Signals** - any material positive or negative items in the data\n'
+            f'4. **Net Read** - overall sentiment balance based strictly on the provided scores\n\n'
             f'{m}'
         ),
     ),
 
     "financial": Module(
         id="financial",
-        icon="💹",
+        icon="",
         label="Financials",
         group="Strategy",
         color="#34d399",
-        description="CFO-level: revenue optimisation, funding, cash flow, tax strategy",
+        description="Financial ratios, Altman Z-Score, DuPont decomposition from PSX or uploaded statements",
         system_prompt=(
-            "You are a senior CFO and financial strategist. "
-            "You understand P&L management, cash flow, fundraising "
-            "(VC, PE, debt, grants, revenue-based), financial modelling, "
-            "tax optimisation, forex risk, and working capital management. "
-            "Tailor advice to business stage and geography. "
-            "The pre-computed financial ratios and metrics are provided in the context — "
-            "write your commentary and strategy based on these numbers directly. "
-            "Do NOT search for or re-derive figures already provided."
+            "Write financial commentary using only the pre-computed ratios provided. "
+            "Interpret each ratio relative to the sector median where provided. "
+            "Flag ratios in warning zones. State the data source and period. "
+            "Do not re-derive or search for figures. Do not recommend financing actions."
         ),
         prompt_builder=lambda b, c, m: (
             f'Comprehensive financial strategy for "{b}"{f" in {c}" if c else ""}.\n\n'
             f'The pre-computed financial ratios, DCF valuation, and health metrics are '
             f'provided in the context below. Base your analysis on these numbers.\n\n'
             f'Deliver:\n'
-            f'1. **Financial Health Commentary** — interpret the provided ratios and health score\n'
-            f'2. **Revenue Optimisation** — pricing, new streams, upsells\n'
-            f'3. **Cost Analysis** — structure and reduction opportunities based on margin data\n'
-            f'4. **Funding Strategy** — what fits their stage (VC/PE/grants/debt)\n'
-            f'5. **Cash Flow Management** — specific tactics based on liquidity ratios\n'
-            f'6. **Financial KPIs** — what to track vs the benchmarks provided\n'
-            f'7. **Tax Optimisation** — jurisdiction-specific strategies\n\n'
+            f'1. **Financial Health Commentary** - interpret the provided ratios and health score\n'
+            f'2. **Revenue Optimisation** - pricing, new streams, upsells\n'
+            f'3. **Cost Analysis** - structure and reduction opportunities based on margin data\n'
+            f'4. **Funding Strategy** - what fits their stage (VC/PE/grants/debt)\n'
+            f'5. **Cash Flow Management** - specific tactics based on liquidity ratios\n'
+            f'6. **Financial KPIs** - what to track vs the benchmarks provided\n'
+            f'7. **Tax Optimisation** - jurisdiction-specific strategies\n\n'
             + (f'Include {c}-specific tax laws, incentives, and financial regulations.\n\n' if c else '')
             + m
         ),
@@ -156,91 +144,84 @@ MODULES: dict[str, Module] = {
 
     "country": Module(
         id="country",
-        icon="🗺️",
+        icon="",
         label="Country Intel",
         group="Intelligence",
         color="#38bdf8",
-        description="Legal requirements + realistic ground truth per market",
+        description="Regulatory framework, macro indicators, and sector-specific compliance requirements",
         system_prompt=(
-            "You are a country risk analyst and market entry specialist. "
-            "Provide BOTH formal legal requirements AND realistic ground truth. "
-            "Ground truth includes: actual corruption friction, informal business norms, "
-            "real timeline vs official timeline, banking access reality, FX controls, "
-            "unofficial costs, what foreign companies actually experience. "
-            "Never give textbook answers — give what an experienced operator knows."
+            "Write a country and regulatory context section using only the macro data "
+            "and compliance rules provided. State SBP rate, CPI, GDP, and relevant "
+            "regulatory bodies for the sector. Describe key compliance obligations. "
+            "Do not add subjective country risk commentary not supported by the data provided."
         ),
         prompt_builder=lambda b, c, m: (
             f'Market intelligence for "{b}" '
-            f'{"entering " + c if c else "— identify their primary market"}.\n\n'
+            f'{"entering " + c if c else "- identify their primary market"}.\n\n'
             f'Deliver for each relevant market:\n'
-            f'1. **Legal Requirements** — registration, licenses, tax, employment law\n'
-            f'2. **Ground Truth** — real vs official timelines, corruption index, '
+            f'1. **Legal Requirements** - registration, licenses, tax, employment law\n'
+            f'2. **Ground Truth** - real vs official timelines, corruption index, '
             f'who you actually need to know, informal costs\n'
-            f'3. **Banking Reality** — account access ease, FX controls, profit repatriation\n'
-            f'4. **Cultural Business Norms** — relationship vs transactional, negotiation style\n'
-            f'5. **Political Risk** — stability, currency risk, regulatory predictability\n'
-            f'6. **Recent Developments** — what has changed in the last 12 months\n\n'
+            f'3. **Banking Reality** - account access ease, FX controls, profit repatriation\n'
+            f'4. **Cultural Business Norms** - relationship vs transactional, negotiation style\n'
+            f'5. **Political Risk** - stability, currency risk, regulatory predictability\n'
+            f'6. **Recent Developments** - what has changed in the last 12 months\n\n'
             f'{m}'
         ),
     ),
 
     "scaling": Module(
         id="scaling",
-        icon="🚀",
+        icon="",
         label="Scaling",
         group="Strategy",
         color="#818cf8",
-        description="10 specific scaling moves, M&A targets, 12-month roadmap",
+        description="Revenue trend, market share estimate, and sector growth rate from available data",
         system_prompt=(
-            "You are a growth strategy consultant who has scaled companies from $1M to $1B+. "
-            "Identify highest-leverage scaling moves specific to this business: "
-            "product-led growth, geographic expansion, channel expansion, M&A, "
-            "franchising, licensing, platform plays, ecosystem building. "
-            "Ground all recommendations in real market data. "
-            "Name specific opportunities, markets, and potential acquisition targets."
+            "Write a scaling context summary using only the revenue trend, sector size, "
+            "and growth data provided. State what the data shows about the company's "
+            "trajectory relative to sector. Do not recommend specific scaling actions, "
+            "M&A targets, or strategic moves."
         ),
         prompt_builder=lambda b, c, m: (
-            f'Scaling playbook for "{b}"{f" — primary market {c}" if c else ""}.\n\n'
+            f'Scaling playbook for "{b}"{f" - primary market {c}" if c else ""}.\n\n'
             f'Deliver:\n'
-            f'1. **Growth Stage** — where they are on the S-curve\n'
-            f'2. **#1 Constraint** — the single biggest thing limiting 10x growth\n'
-            f'3. **Top 10 Scaling Moves** — ranked by impact/effort, with specific detail\n'
-            f'4. **M&A Opportunities** — specific acquisition targets worth considering\n'
-            f'5. **3 Fatal Mistakes** — what kills companies at this stage in this sector\n'
-            f'6. **12-Month Roadmap** — specific milestones and decision gates\n'
-            f'7. **The $1B Version** — what does this business look like at full scale\n\n'
+            f'1. **Growth Stage** - where they are on the S-curve\n'
+            f'2. **#1 Constraint** - the single biggest thing limiting 10x growth\n'
+            f'3. **Top 10 Scaling Moves** - ranked by impact/effort, with specific detail\n'
+            f'4. **Growth Constraints** - operational limits implied by the ratio and sector data\n'
+            f'5. **3 Fatal Mistakes** - what kills companies at this stage in this sector\n'
+            f'6. **12-Month Roadmap** - specific milestones and decision gates\n'
+            f'7. **The $1B Version** - what does this business look like at full scale\n\n'
             f'{m}'
         ),
     ),
 
     "valuation": Module(
         id="valuation",
-        icon="💰",
+        icon="",
         label="Valuation",
         group="Core",
         color="#fbbf24",
-        description="DCF + multiples, bear/base/bull range, exit paths, buyer list",
+        description="DCF scenarios, sector multiples, and equity value range from computed financials",
         system_prompt=(
-            "You are a valuation expert combining investment banking, VC, and M&A advisory. "
-            "Use DCF, comparable company multiples (EV/Revenue, EV/EBITDA, P/E, EV/GMV), "
-            "and precedent transactions. "
-            "Pre-computed DCF and ratio data are provided in context — use these as your base. "
-            "Give bear/base/bull cases with specific assumptions. "
-            "Identify realistic exit paths and likely acquirers by name. "
-            "Do NOT search for or re-derive figures already provided in context."
+            "Write a valuation summary using only the pre-computed DCF and multiple data provided. "
+            "State bear, base, and bull equity values with the key assumptions. "
+            "Compare multiples to sector peers where data is provided. "
+            "Do not name acquirers. Do not recommend exit strategies."
         ),
         prompt_builder=lambda b, c, m: (
-            f'Comprehensive valuation of "{b}"{f" — market {c}" if c else ""}.\n\n'
+            f'Comprehensive valuation of "{b}"{f" - market {c}" if c else ""}.\n\n'
             f'The DCF model, financial ratios, and health score are pre-computed and '
             f'provided in the context. Use these as the foundation of your valuation analysis.\n\n'
             f'Deliver:\n'
-            f'1. **Valuation Summary** — interpret the provided DCF bear/base/bull range\n'
-            f'2. **Comparable Company Multiples** — cross-reference with sector peers\n'
-            f'3. **Key Assumptions** — what drives the valuation and sensitivity factors\n'
-            f'4. **Value Drivers and Destroyers** — what moves the number\n'
-            f'5. **Exit Paths** — IPO/strategic/PE with likely buyer names\n'
-            f'6. **Precedent Transactions** — recent M&A in this space\n'
-            f'7. **Investment Verdict** — buy/hold/avoid with specific reasoning\n\n'
+            f'1. **Valuation Summary** - interpret the provided DCF bear/base/bull range\n'
+            f'2. **Comparable Company Multiples** - cross-reference with sector peers\n'
+            f'3. **Key Assumptions** - what drives the valuation and sensitivity factors\n'
+            f'4. **Value Drivers and Destroyers** - what moves the number, based on the provided sensitivity data\n'
+            f'5. **Valuation Range** - reconcile the DCF scenarios with the peer multiples\n'
+            f'6. **Key Sensitivities** - which assumptions the value is most sensitive to\n'
+            f'7. **Valuation Read** - where the number lands versus current price, with reasoning\n\n'
             f'{m}'
         ),
         requires_web_search=False,
@@ -249,52 +230,49 @@ MODULES: dict[str, Module] = {
 
     "economy": Module(
         id="economy",
-        icon="🌐",
+        icon="",
         label="Economy",
         group="Core",
         color="#00d4ff",
-        description="Macro environment: GDP, inflation, rates, tailwinds and headwinds",
+        description="SBP rate, CPI, GDP, forex rates, and sector macro indicators",
         system_prompt=(
-            "You are a macroeconomic analyst. Search for current data: "
-            "GDP growth, inflation rate, interest rates, employment, "
-            "consumer confidence, supply chain conditions, commodity prices, "
-            "trade flows, currency movements. "
-            "Translate macro trends into specific business implications — "
-            "not generic commentary but precise impact on this sector."
+            "Write a macro environment summary using only the indicators provided: "
+            "policy rate, inflation, GDP growth, forex rates, and any sector-specific "
+            "government data. State what each indicator means for this sector specifically. "
+            "Do not add global macro commentary not present in the provided data."
         ),
         prompt_builder=lambda b, c, m: (
             f'Macroeconomic environment analysis for "{b}"\'s sector'
             f'{f" in {c}" if c else ""}.\n\n'
-            f'Search for current economic data and translate to business impact.\n\n'
+            f'Using the macro indicators provided in the context, translate them to business impact.\n\n'
             f'Deliver:\n'
-            f'1. **Current Macro Snapshot** — GDP, inflation, rates, employment\n'
-            f'2. **Sector-Specific Conditions** — how macro hits their industry\n'
-            f'3. **Tailwinds** — macro forces working in their favour\n'
-            f'4. **Headwinds** — macro forces working against them\n'
-            f'5. **Timing Windows** — near-term opportunities or risks (next 12 months)\n'
-            f'6. **Scenario Analysis** — base case vs downside macro scenario impact\n\n'
+            f'1. **Current Macro Snapshot** - GDP, inflation, rates, employment\n'
+            f'2. **Sector-Specific Conditions** - how macro hits their industry\n'
+            f'3. **Tailwinds** - macro forces working in their favour\n'
+            f'4. **Headwinds** - macro forces working against them\n'
+            f'5. **Timing Windows** - near-term opportunities or risks (next 12 months)\n'
+            f'6. **Scenario Analysis** - base case vs downside macro scenario impact\n\n'
             f'{m}'
         ),
     ),
 
     "worldnews": Module(
         id="worldnews",
-        icon="📡",
-        label="World Intel",
+        icon="",
+        label="World Intel (News Feed)",
         group="Core",
         color="#f59e0b",
-        description="Breaking news and geopolitical events as a business intelligence brief",
+        description="Relevance-filtered and FinBERT-scored news headlines for this company and sector",
         system_prompt=(
-            "You are a global intelligence analyst monitoring world events for business impact. "
-            "Search for breaking news, geopolitical developments, regulatory changes, "
-            "technology disruptions, and supply chain events. "
-            "Present as a structured intelligence brief. "
-            "Rate each item: Opportunity or Threat, magnitude 1-10, time horizon."
+            "Write a news intelligence summary using only the headlines provided, "
+            "which have already been filtered for relevance and scored for sentiment. "
+            "Group by theme. State tailwind and headwind counts. "
+            "Do not reference headlines not in the provided list."
         ),
         prompt_builder=lambda b, c, m: (
             f'Global intelligence brief for "{b}"{f" operating in {c}" if c else ""}.\n\n'
-            f'Search for latest news, geopolitical events, regulatory changes, '
-            f'technology disruptions affecting their sector.\n\n'
+            f'Using only the relevance-filtered, FinBERT-scored headlines provided in the context, '
+            f'summarise the developments affecting their sector.\n\n'
             f'For each significant development:\n'
             f'- Type: OPPORTUNITY or THREAT\n'
             f'- Magnitude: 1-10\n'

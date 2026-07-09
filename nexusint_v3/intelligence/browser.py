@@ -22,7 +22,7 @@ try:
     PLAYWRIGHT_AVAILABLE = True
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
-    log.warning("Playwright not installed — browser agent unavailable")
+    log.warning("Playwright not installed - browser agent unavailable")
 
 
 def fetch_page_text(url: str, wait_for: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:

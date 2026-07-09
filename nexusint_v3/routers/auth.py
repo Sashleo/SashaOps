@@ -40,7 +40,7 @@ def _password_policy_error(password: str) -> Optional[str]:
     if len(password) < 12:
         return "Admin password must be at least 12 characters."
     if password.lower() in _COMMON_PASSWORDS:
-        return "That password is too common — choose a stronger one."
+        return "That password is too common - choose a stronger one."
     if password.isdigit() or password.isalpha():
         return "Password must mix letters, digits and/or symbols."
     return None

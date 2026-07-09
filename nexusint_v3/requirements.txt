@@ -53,6 +53,8 @@ structlog==24.4.0
 # OCR for scanned PSX annual reports
 pytesseract==0.3.13
 pdf2image==1.17.0
+# opencv (headless: no libGL) for the preprocessed-OCR extractor stage
+opencv-python-headless==4.10.0.84
 
 # ── Local NLP (document intelligence — no external calls) ─────────────────────
 # en_core_web_sm model is downloaded at Docker build time (see Dockerfile)

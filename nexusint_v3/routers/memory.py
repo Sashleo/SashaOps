@@ -87,7 +87,7 @@ async def trigger_learning(request: Request):
     try:
         new_patterns = run_pattern_learning()
         return HTMLResponse(
-            f'<div class="alert alert-success">Pattern learning complete — '
+            f'<div class="alert alert-success">Pattern learning complete - '
             f'{new_patterns} new patterns extracted.</div>'
         )
     except Exception as e:

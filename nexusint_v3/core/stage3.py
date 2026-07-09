@@ -48,7 +48,7 @@ async def run_stage3(run_id, client_id, business_name, module_ids, client_key):
         log.info("Stage 3 complete", run_id=run_id, report=record.get("id"))
 
     except (RunCancelled, asyncio.CancelledError):
-        log.info("Stage 3 cancelled by user — aborting", run_id=run_id)
+        log.info("Stage 3 cancelled by user - aborting", run_id=run_id)
         raise
     except Exception as e:
         log.error("Stage 3 crashed", run_id=run_id, error=str(e), exc_info=True)

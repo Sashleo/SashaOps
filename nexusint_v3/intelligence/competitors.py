@@ -183,13 +183,13 @@ def build_competitor_comparison(
     med = {m: _median([r.get(m) for r in peer_rows]) for m in metrics}
 
     def _row(r: dict, marker: str = "") -> str:
-        nm = (marker + " " + (r.get("name") or r.get("symbol") or "—"))[:34]
+        nm = (marker + " " + (r.get("name") or r.get("symbol") or "-"))[:34]
         return (f"| {nm} | {_pct(r.get('net_margin'))} | {_pct(r.get('gross_margin'))} "
                 f"| {_pct(r.get('roe'))} | {_x(r.get('de'))} | {_x(r.get('current_ratio'))} "
                 f"| {_x(r.get('pe'))} | {_mn(r.get('revenue'))} |")
 
     lines = [
-        f"### Peer Comparison — {sector} sector",
+        f"### Peer Comparison - {sector} sector",
         "_Top competitors by market share (market cap). Ratios computed from latest PSX annual statements._",
         "",
         "| Company | Net Mgn | Gross Mgn | ROE | D/E | Current | P/E | Revenue (mn) |",
@@ -201,7 +201,7 @@ def build_competitor_comparison(
     lines.append(
         f"| _Peer median_ | {_pct(med['net_margin'])} | {_pct(med['gross_margin'])} "
         f"| {_pct(med['roe'])} | {_x(med['de'])} | {_x(med['current_ratio'])} "
-        f"| {_x(med['pe'])} | — |"
+        f"| {_x(med['pe'])} | - |"
     )
     lines.append("")
 

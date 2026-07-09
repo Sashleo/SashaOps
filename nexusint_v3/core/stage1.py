@@ -260,7 +260,7 @@ async def run_stage1(run_id, client_id, business_name, region_id, module_list,
                 if local_check_res.get("ocr_derived"):
                     summary.ratios_text = (
                         "[DATA NOTE: balance-sheet figures were OCR-read from a scanned "
-                        "PSX report — treat current ratio, debt/equity, Altman Z and ROE "
+                        "PSX report - treat current ratio, debt/equity, Altman Z and ROE "
                         "as indicative, not exact.]\n" + summary.ratios_text
                     )
             except Exception:
@@ -285,7 +285,7 @@ async def run_stage1(run_id, client_id, business_name, region_id, module_list,
                                 key=lambda x: getattr(x, "relevance_score", 0.0), reverse=True)
                 summary.sample_headlines = [
                     f"{it.title} [{it.feed_label}]"
-                    + ("  ✓ relevant" if is_relevant(it) else "")
+                    + ("  (relevant)" if is_relevant(it) else "")
                     for it in ranked[:5]
                 ]
             except Exception as e:
@@ -451,7 +451,7 @@ async def run_stage1(run_id, client_id, business_name, region_id, module_list,
                 )
 
     except (RunCancelled, asyncio.CancelledError):
-        log.info("Stage 1 cancelled by user — aborting", run_id=run_id)
+        log.info("Stage 1 cancelled by user - aborting", run_id=run_id)
         raise
     except Exception as e:
         log.error("Stage 1 crashed", run_id=run_id, error=str(e), exc_info=True)
