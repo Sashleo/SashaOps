@@ -429,6 +429,14 @@ def _add_security_headers(response) -> None:
             "base-uri 'self'; "
             "form-action 'self'"
         )
+        # Never cache dynamic HTML (full pages + HTMX fragments). Without this the
+        # browser can serve a stale page after a redeploy/restart, which looks like
+        # broken interactivity (e.g. client selection appearing to do nothing).
+        # Static assets keep their own caching since they are not text/html.
+        ctype = response.headers.get("content-type", "")
+        if ctype.startswith("text/html"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            response.headers["Pragma"]        = "no-cache"
     except Exception:
         pass
 
