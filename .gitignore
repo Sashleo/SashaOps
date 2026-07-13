@@ -2,17 +2,17 @@
 .env
 *.env
 !*.env.example
-nexusint_v3/.env
+sashaops_app/.env
 credentials.json
 token.json
-nexusint_v3/credentials.json
-nexusint_v3/token.json
+sashaops_app/credentials.json
+sashaops_app/token.json
 
 # ── Databases & encrypted client data ──
 *.db
 *.db-wal
 *.db-shm
-nexusint_v3/data/
+sashaops_app/data/
 
 # ── Python ──
 __pycache__/
@@ -25,25 +25,24 @@ env/
 
 # ── Temp / regenerated caches ──
 .tmp/
-nexusint_v3/.tmp/
-nexusint_v3/reports/generated/
-nexusint_v3/static/js/htmx.min.js
+sashaops_app/.tmp/
+sashaops_app/reports/generated/
 
 # ── Tests & test config (excluded from published repo) ──
-nexusint_v3/tests/
+sashaops_app/tests/
 pytest.ini
-nexusint_v3/pytest.ini
+sashaops_app/pytest.ini
 pyproject.toml
-nexusint_v3/pyproject.toml
+sashaops_app/pyproject.toml
 
 # ── Dev / debug scratch ──
-nexusint_v3/verify_luck.py
-nexusint_v3/check_db.py
-nexusint_v3/nul
+sashaops_app/verify_luck.py
+sashaops_app/check_db.py
+sashaops_app/nul
 nul
 
 # ── Agent / editor config (not part of the app) ──
 CLAUDE.md
-nexusint_v3/CLAUDE.md
+sashaops_app/CLAUDE.md
 .claude/
 .DS_Store

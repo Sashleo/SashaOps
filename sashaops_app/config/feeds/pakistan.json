@@ -1,0 +1,68 @@
+{
+  "country": "pakistan",
+  "feeds": [
+    {
+      "id": "dawn_pk",
+      "label": "Dawn",
+      "url": "https://www.dawn.com/feeds/home",
+      "category": "world",
+      "source_type": "independent"
+    },
+    {
+      "id": "dawn_biz_pk",
+      "label": "Dawn Business",
+      "url": "https://www.dawn.com/feeds/business",
+      "category": "business",
+      "source_type": "independent"
+    },
+    {
+      "id": "tribune_pk",
+      "label": "Express Tribune",
+      "url": "https://tribune.com.pk/feed/business",
+      "category": "business",
+      "source_type": "independent"
+    },
+    {
+      "id": "geo_pk",
+      "label": "Geo News",
+      "url": "https://www.geo.tv/rss/1/1",
+      "category": "world",
+      "source_type": "government"
+    },
+    {
+      "id": "thenews_pk",
+      "label": "The News International",
+      "url": "https://www.thenews.com.pk/rss/1/1",
+      "category": "world",
+      "source_type": "independent"
+    },
+    {
+      "id": "ary_pk",
+      "label": "ARY News",
+      "url": "https://arynews.tv/feed/",
+      "category": "world",
+      "source_type": "independent"
+    },
+    {
+      "id": "brecorder_pk",
+      "label": "Business Recorder",
+      "url": "https://www.brecorder.com/feeds/latest-news",
+      "category": "business",
+      "source_type": "business"
+    },
+    {
+      "id": "propakistani",
+      "label": "ProPakistani",
+      "url": "https://propakistani.pk/feed/",
+      "category": "tech",
+      "source_type": "independent"
+    },
+    {
+      "id": "bol_pk",
+      "label": "BOL News",
+      "url": "https://www.bolnews.com/feed/",
+      "category": "world",
+      "source_type": "independent"
+    }
+  ]
+}

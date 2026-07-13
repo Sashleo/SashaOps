@@ -1,0 +1,21 @@
+services:
+  sashaops:
+    build: .
+    container_name: sashaops
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - sashaops_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  sashaops_data:
+    name: sashaops_data

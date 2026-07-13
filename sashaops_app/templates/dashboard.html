@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - SashaOps{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="page-title">Dashboard</div>
+</div>
+
+<!-- 1. Active client -->
+<div class="card mb-24">
+  <div class="card-title">Active Client</div>
+  {% if active_client %}
+  <div style="font-size:1.1em; font-weight:600; margin-top:4px">{{ active_client.name }}</div>
+  <div style="font-size:0.85em; color:var(--text-muted); margin-top:2px">
+    {{ active_client.industry or 'Industry not set' }}
+  </div>
+  {% else %}
+  <div style="font-size:0.9em; color:var(--text-muted); margin-top:4px">
+    No client selected. Choose one from the Active Client picker in the sidebar.
+  </div>
+  {% endif %}
+</div>
+
+<!-- 2. Data health -->
+<div class="card mb-24">
+  <div class="card-title">Data Health</div>
+  <table style="width:100%; font-size:0.88em; border-collapse:collapse; margin-top:6px">
+    {% for row in data_health %}
+    <tr>
+      <td style="padding:6px 0; color:var(--text-muted)">{{ row.label }}</td>
+      <td style="padding:6px 0; text-align:right; font-family:var(--font-mono);
+                 color:{% if row.status == 'red' %}#f87171{% elif row.status == 'amber' %}#f59e0b{% else %}var(--accent){% endif %}">
+        {{ row.value }}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div style="font-size:0.75em; color:var(--text-dim); margin-top:8px">
+    Amber: older than 24h. Red: older than 72h.
+  </div>
+</div>
+
+<!-- 3. Quick actions -->
+<div class="card">
+  <div class="card-title">Quick Actions</div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px">
+    <a href="/psx" class="btn btn-primary">PSX Analyser</a>
+    <a href="/private" class="btn">Private Analyser</a>
+    <a href="/newsfeed" class="btn">Newsfeed</a>
+  </div>
+</div>
+
+{% endblock %}

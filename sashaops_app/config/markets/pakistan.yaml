@@ -1,0 +1,50 @@
+# Pakistan market configuration.
+# Anchors the portability contract. Not yet consumed by the engine - Phase 6 wires
+# this in so nothing about a country is hardcoded in the analysis engine.
+
+country: pakistan
+
+exchange:
+  name: PSX
+  id: psx
+  base_url: https://dps.psx.com.pk
+  scraper_module: intelligence.exchange_scrapers.psx
+  company_url_pattern: "https://dps.psx.com.pk/company/{ticker}"
+  reports_url_pattern: "https://dps.psx.com.pk/company/{ticker}"
+
+currency:
+  code: PKR
+  symbol: "Rs"
+  unit_scale: 1000     # exchange stores figures in thousands
+
+central_bank:
+  name: SBP
+  scraper_module: intelligence.gov_scrapers.sbp
+
+regulators:
+  banking: SBP
+  pharma: DRAP
+  telecom: PTA
+  power: NEPRA
+  oil_gas: OGRA
+  insurance: SECP
+  general: SECP
+
+compliance_rules_module: intelligence.compliance_rules
+
+news_feeds:
+  file: config/feeds/pakistan.json
+
+company_registry:
+  name: SECP
+  base_url: https://eservices.secp.gov.pk
+
+audit_report_labels:
+  positive_opinions:
+    - "unqualified opinion"
+    - "true and fair view"
+  negative_opinions:
+    - "qualified opinion"
+    - "adverse opinion"
+    - "disclaimer of opinion"
+    - "going concern"
