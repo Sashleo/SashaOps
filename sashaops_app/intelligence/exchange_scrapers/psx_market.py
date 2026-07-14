@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from datetime import date, datetime, timezone
 
-from intelligence.exchange_scrapers.base import BaseExchangeScraper, ScrapeResult
+from intelligence.exchange_scrapers.base import BaseExchangeScraper, ScrapeResult, ScrapeStatus
 
 
 def _now() -> str:
@@ -31,6 +31,10 @@ def _norm_name(s: str) -> str:
 
 class PSXMarketScraper(BaseExchangeScraper):
     scraper_id = "psx_market"
+    label = "PSX prices"
+    category = "exchange"
+    default_freshness_hours = 24
+    target_success_rate = 0.0   # set from the live suite (Task 2.4)
     region_id  = "pakistan"
 
     def fetch(self) -> ScrapeResult:
@@ -43,7 +47,7 @@ class PSXMarketScraper(BaseExchangeScraper):
         import structlog
         log = structlog.get_logger()
 
-        result = ScrapeResult(scraper_id=self.scraper_id)
+        result = ScrapeResult(scraper_id=self.scraper_id, status=ScrapeStatus.NO_DATA)
         inserted = 0
         td = date.today().isoformat()
 
@@ -54,7 +58,7 @@ class PSXMarketScraper(BaseExchangeScraper):
             if symbols:
                 inserted += bulk_upsert_symbols(symbols)
         except Exception as e:
-            result.error_msg = f"symbols: {e}"[:200]
+            result.error_message = f"symbols: {e}"[:200]
 
         # name → symbol map for matching market-summary rows
         name2sym: dict[str, str] = {}
@@ -154,10 +158,13 @@ class PSXMarketScraper(BaseExchangeScraper):
             log.warning("psx_market: market_cap update failed", error=str(mce)[:120])
 
         result.rows_inserted = inserted
-        result.status = "success" if inserted else ("failed" if result.error_msg else "partial")
+        result.finished_at = datetime.utcnow()
+        result.status = (ScrapeStatus.SUCCESS if inserted
+                         else ScrapeStatus.PARSER_FAILED if result.error_message
+                         else ScrapeStatus.NO_DATA)
         log.info("psx_market: scrape complete",
-                 status=result.status, rows=inserted, error=result.error_msg)
-        return result
+                 status=result.status.value, rows=inserted, error=result.error_message)
+        return self.log(result)
 
     @staticmethod
     def _resolve_symbol(name: str, name2sym: dict) -> str | None:

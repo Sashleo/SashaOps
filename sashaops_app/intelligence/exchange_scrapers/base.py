@@ -9,10 +9,13 @@ Every scraper:
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 import structlog
+
+# The single shared contract. Re-exported here so existing imports
+# (`from intelligence.exchange_scrapers.base import ScrapeResult`) keep working.
+from intelligence.scraper_base import BaseScraper, ScrapeResult, ScrapeStatus  # noqa: F401
 
 log = structlog.get_logger()
 
@@ -28,20 +31,14 @@ ERAPI_STORE_QUOTES = [
 ]
 
 
-@dataclass
-class ScrapeResult:
-    scraper_id: str
-    region_id: str = "pakistan"   # retained for compatibility; always Pakistan
-    status: str = "success"       # 'success' | 'failed' | 'partial'
-    rows_inserted: int = 0
-    rows_skipped: int = 0
-    error_msg: str = ""
-    details: dict = field(default_factory=dict)
-
-
-class BaseExchangeScraper(ABC):
+class BaseExchangeScraper(BaseScraper):
+    """Exchange/forex scraper. Implements the shared BaseScraper contract."""
     scraper_id: str = ""
-    region_id: str = "pakistan"
+    label: str = ""
+    category: str = "exchange"
+    default_freshness_hours: int = 24
+    target_success_rate: float = 0.0
+    region_id: str = "pakistan"   # retained for compatibility; always Pakistan
 
     REQUEST_TIMEOUT = 20        # seconds for HTTP requests
     REQUEST_HEADERS = {
@@ -55,38 +52,37 @@ class BaseExchangeScraper(ABC):
         """Fetch data and write rows to DB. Never raises."""
 
     def run(self) -> ScrapeResult:
-        """Public entry point — wraps fetch() and logs the run."""
+        """Back-compat entry point. fetch() already logs to scrape_log; this also
+        writes the legacy scraper_runs row and never raises."""
         from database.connection import get_db
         started = datetime.now(timezone.utc).isoformat()
-        result = ScrapeResult(scraper_id=self.scraper_id, region_id=self.region_id, status="failed")
         try:
             result = self.fetch()
         except Exception as e:
-            result.status = "failed"
-            result.error_msg = str(e)[:500]
             log.warning("Scraper raised unexpectedly", scraper=self.scraper_id, error=str(e))
-        finally:
-            completed = datetime.now(timezone.utc).isoformat()
-            try:
-                db = get_db()
-                db.execute(
-                    """INSERT INTO scraper_runs
-                       (scraper_id, status, rows_inserted, rows_skipped, error_msg, started_at, completed_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (result.scraper_id, result.status,
-                     result.rows_inserted, result.rows_skipped,
-                     result.error_msg or None, started, completed),
-                )
-                db.commit()
-            except Exception as db_err:
-                log.warning("Could not log scraper run", error=str(db_err))
-        log.info(
-            "Scraper finished",
-            scraper=self.scraper_id,
-            status=result.status,
-            inserted=result.rows_inserted,
-            skipped=result.rows_skipped,
-        )
+            result = ScrapeResult(scraper_id=self.scraper_id, status=ScrapeStatus.PARSER_FAILED,
+                                  error_message=str(e)[:500])
+            result.finished_at = datetime.utcnow()
+            self.log(result)
+
+        completed = datetime.now(timezone.utc).isoformat()
+        try:
+            status = getattr(result.status, "value", result.status)
+            get_db().execute(
+                """INSERT INTO scraper_runs
+                   (scraper_id, status, rows_inserted, rows_skipped, error_msg, started_at, completed_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (result.scraper_id, str(status),
+                 result.rows_inserted, result.rows_failed,
+                 result.error_message or None, started, completed),
+            )
+            get_db().commit()
+        except Exception as db_err:
+            log.warning("Could not log scraper run", error=str(db_err))
+
+        log.info("Scraper finished", scraper=self.scraper_id,
+                 status=getattr(result.status, "value", result.status),
+                 inserted=result.rows_inserted, failed=result.rows_failed)
         return result
 
     def _fetch_erapi_forex(self, db, region: str, bank: str, base_currency: str) -> Tuple[int, int, str]:

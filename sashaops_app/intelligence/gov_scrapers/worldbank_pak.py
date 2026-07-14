@@ -31,6 +31,10 @@ _BASE = "https://api.worldbank.org/v2/country/PAK/indicator/{code}?format=json&p
 
 class WorldBankPakScraper(BasePakGovScraper):
     scraper_id = "worldbank_pak"
+    label = "World Bank Pakistan"
+    category = "stats"
+    default_freshness_hours = 8760
+    target_success_rate = 0.0   # set from the live suite (Task 2.4)
 
     def scrape(self) -> Optional[dict]:
         out: dict = {}

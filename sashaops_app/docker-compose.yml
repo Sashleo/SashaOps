@@ -9,6 +9,10 @@ services:
     volumes:
       - .:/app
       - sashaops_data:/app/data
+      # .tmp is disposable scraper/OCR cache. It must be a Docker-managed volume:
+      # the Windows bind mount is root-owned, so the non-root app user (uid 10001)
+      # cannot write to it, which silently breaks every scraper cache.
+      - sashaops_tmp:/app/.tmp
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fk", "https://localhost:8000/health"]
@@ -19,3 +23,5 @@ services:
 volumes:
   sashaops_data:
     name: sashaops_data
+  sashaops_tmp:
+    name: sashaops_tmp

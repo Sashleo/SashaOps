@@ -17,6 +17,7 @@ from typing import Optional
 import structlog
 
 from intelligence.gov_scrapers.base import BasePakGovScraper
+from intelligence.scraper_base import ScrapeResult
 from database.macro_data import upsert_sbp_indicator, get_sbp_indicator
 
 log = structlog.get_logger()
@@ -102,6 +103,10 @@ def _to_date(s: str) -> Optional[date]:
 
 class SBPMonetaryScraper(BasePakGovScraper):
     scraper_id = "sbp_monetary"
+    label = "SBP monetary policy"
+    category = "macro"
+    default_freshness_hours = 720
+    target_success_rate = 0.0   # set from the live suite (Task 2.4)
 
     # ── MPC-calendar-aware refresh ────────────────────────────────────────────
     def is_refresh_due(self, today: Optional[date] = None) -> bool:
@@ -121,7 +126,7 @@ class SBPMonetaryScraper(BasePakGovScraper):
             return True   # an MPC decision was announced after our last update
         return (today - last).days > _MPC_CADENCE_DAYS
 
-    def fetch(self) -> Optional[dict]:
+    def fetch(self) -> "ScrapeResult":
         """Force a re-scrape (bypass the daily cache) when an MPC refresh is due."""
         if self.is_refresh_due():
             p = self._cache_path()
@@ -143,9 +148,13 @@ class SBPMonetaryScraper(BasePakGovScraper):
                 continue
             text = soup.get_text(" ", strip=True)
             all_text += " " + text
-            rate = self.number_near(text, *_KEYWORDS, window=100)
+            rate, snippet = self.number_near_ctx(text, *_KEYWORDS, window=100)
             if rate is not None and _PLAUSIBLE_MIN <= rate <= _PLAUSIBLE_MAX:
                 out["policy_rate"] = rate
+                # Provenance: exactly where and from what text we read it.
+                out["_source_url"] = url
+                out["_snippet"] = snippet
+                out["_method"] = "html_bs4"
                 break
 
         if "policy_rate" not in out:
@@ -153,9 +162,12 @@ class SBPMonetaryScraper(BasePakGovScraper):
                 press_text = self.get_press_release_text(press_url, max_releases=2)
                 if press_text:
                     all_text += " " + press_text
-                    rate = self.number_near(press_text, *_KEYWORDS, window=120)
+                    rate, snippet = self.number_near_ctx(press_text, *_KEYWORDS, window=120)
                     if rate is not None and _PLAUSIBLE_MIN <= rate <= _PLAUSIBLE_MAX:
                         out["policy_rate"] = rate
+                        out["_source_url"] = press_url
+                        out["_snippet"] = snippet
+                        out["_method"] = "html_bs4"
                         break
 
         if all_text.strip():
@@ -179,6 +191,21 @@ class SBPMonetaryScraper(BasePakGovScraper):
             period = date.today().strftime("%Y-%m")
             upsert_sbp_indicator("policy_rate", period, new_rate, "%", source="SBP")
             n += 1
+
+            # Verifiable pipeline: store the value WITH its provenance so any future
+            # discrepancy can be traced to the exact page + text it was read from.
+            from database.provenance import record_observation
+            record_observation(
+                indicator="sbp_policy_rate",
+                value=new_rate,
+                period=period,
+                unit="%",
+                source="SBP",
+                source_url=data.get("_source_url", ""),
+                source_snippet=data.get("_snippet", ""),
+                method_used=data.get("_method", "html_bs4"),
+                scraper_id=self.scraper_id,
+            )
 
             # Trend: signed change in basis points vs the previous distinct reading.
             if prev_rate is not None and abs(new_rate - prev_rate) > 1e-9:

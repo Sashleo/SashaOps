@@ -43,14 +43,11 @@ async def test_scrapers(request: Request):
         for sc in scrapers:
             sid = getattr(sc, "scraper_id", sc.__class__.__name__)
             try:
-                data = sc.fetch()
-                run = db.execute(
-                    "SELECT status, rows_inserted, error_msg FROM scraper_runs "
-                    "WHERE scraper_id=? ORDER BY completed_at DESC LIMIT 1", (sid,),
-                ).fetchone()
-                status = (run["status"] if run else ("success" if data else "partial"))
-                nrows  = (run["rows_inserted"] if run else 0)
-                err    = (run["error_msg"] if run else "") or ""
+                res    = sc.fetch()                 # ScrapeResult (BaseScraper contract)
+                status = getattr(res.status, "value", res.status)
+                nrows  = res.rows_inserted
+                err    = res.error_message or ""
+                data   = (res.artifacts or {}).get("data")
                 fields = ", ".join(sorted(data.keys())) if isinstance(data, dict) else ""
             except Exception as e:
                 status, nrows, err, fields = "error", 0, str(e)[:200], ""

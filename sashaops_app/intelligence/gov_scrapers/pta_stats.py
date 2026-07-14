@@ -46,6 +46,10 @@ _DOMAIN_KEYWORDS = [
 
 class PTAStatsScraper(BasePakGovScraper):
     scraper_id = "pta_stats"
+    label = "PTA telecom stats"
+    category = "stats"
+    default_freshness_hours = 1440
+    target_success_rate = 0.0   # set from the live suite (Task 2.4)
 
     def scrape(self) -> Optional[dict]:
         out: dict = {}

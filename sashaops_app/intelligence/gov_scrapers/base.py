@@ -17,7 +17,22 @@ from typing import Optional
 
 import structlog
 
+from intelligence.scraper_base import BaseScraper, ScrapeResult, ScrapeStatus
+
 log = structlog.get_logger()
+
+
+def _is_network_error(exc: Exception) -> bool:
+    """True when the source could not be reached (vs. reached but unparseable)."""
+    name = type(exc).__name__.lower()
+    if any(k in name for k in ("timeout", "connection", "dns", "ssl", "proxy")):
+        return True
+    try:
+        import requests
+        return isinstance(exc, requests.exceptions.RequestException)
+    except Exception:
+        return False
+
 
 CACHE_DIR = Path(".tmp/gov_cache")
 HEADERS = {
@@ -29,33 +44,65 @@ HEADERS = {
 REQUEST_TIMEOUT = 8
 
 
-class BasePakGovScraper(ABC):
+class BasePakGovScraper(BaseScraper):
+    """
+    Pakistan government scraper. Implements the shared BaseScraper contract:
+    fetch() returns a ScrapeResult and logs to scrape_log. Subclasses still
+    implement scrape() -> dict and persist(dict) -> int; the parsed dict is
+    carried on result.artifacts["data"] for callers that want it.
+    """
     scraper_id: str = ""
+    label: str = ""
+    category: str = "regulator"
+    default_freshness_hours: int = 720
+    target_success_rate: float = 0.0
     cache_ttl_hours: int = 24
+    source_url: str = ""
 
     # ── Public entry point ────────────────────────────────────────────────────
-    def fetch(self) -> Optional[dict]:
-        """Cache → parse → persist. Never raises. Returns dict | None."""
+    def fetch(self) -> ScrapeResult:
+        """Cache -> parse -> persist. Never raises. Returns ScrapeResult."""
+        r = self.new_result(source_url=self.source_url or None)
+        started_iso = r.started_at.isoformat()
+
         cached = self._load_cache()
         if cached is not None:
-            return cached
-        started = datetime.now(timezone.utc).isoformat()
-        status, rows, err = "failed", 0, ""
-        result: Optional[dict] = None
+            r.artifacts = {"data": cached, "cached": True}
+            r.method_used = "cache"
+            status = ScrapeStatus.SUCCESS if cached else ScrapeStatus.NO_DATA
+            return self.log(r.finish(status))
+
+        data: Optional[dict] = None
         try:
-            result = self.scrape()
-            if result:
-                rows = self._persist(result)
-                self._save_cache(result)
-                status = "success" if rows else "partial"
-            else:
-                status = "partial"
-        except Exception as e:  # never raise
+            data = self.scrape()
+        except Exception as e:
             err = str(e)[:300]
             log.info("Gov scraper failed", scraper=self.scraper_id, error=err)
-        finally:
-            self._log_run(status, rows, err, started)
-        return result
+            self._log_run("failed", 0, err, started_iso)
+            status = (ScrapeStatus.UNREACHABLE
+                      if _is_network_error(e) else ScrapeStatus.PARSER_FAILED)
+            return self.log(r.finish(status, error_message=err))
+
+        if not data:
+            self._log_run("partial", 0, "", started_iso)
+            return self.log(r.finish(
+                ScrapeStatus.PARSER_FAILED,
+                error_message="scrape() returned no data",
+            ))
+
+        rows = self._persist(data)
+        self._save_cache(data)
+        r.artifacts = {"data": data}
+        r.rows_inserted = rows
+        r.method_used = r.method_used or getattr(self, "method_used", None)
+        self._log_run("success" if rows else "partial", rows, "", started_iso)
+        return self.log(r.finish(
+            ScrapeStatus.SUCCESS if rows else ScrapeStatus.PARTIAL
+        ))
+
+    def fetch_data(self) -> Optional[dict]:
+        """Convenience for callers that only want the parsed dict."""
+        return (self.fetch().artifacts or {}).get("data")
 
     # ── Subclasses implement these ────────────────────────────────────────────
     @abstractmethod
@@ -124,6 +171,31 @@ class BasePakGovScraper(ABC):
                 except ValueError:
                     pass
         return None
+
+    @staticmethod
+    def number_near_ctx(text: str, *keywords: str, window: int = 100):
+        """
+        Like number_near(), but also returns the RAW SNIPPET the number was parsed
+        from. Provenance requires the snippet: when a source silently changes shape,
+        the stored snippet is what lets a human see what we actually read.
+
+        Returns (value, snippet) or (None, "").
+        """
+        if not text:
+            return (None, "")
+        low = text.lower()
+        for kw in keywords:
+            idx = low.find(kw.lower())
+            if idx == -1:
+                continue
+            seg = text[idx: idx + window]
+            m = re.search(r"(-?\d{1,3}(?:,\d{3})*(?:\.\d+)?)", seg)
+            if m:
+                try:
+                    return (float(m.group(1).replace(",", "")), " ".join(seg.split())[:300])
+                except ValueError:
+                    pass
+        return (None, "")
 
     @staticmethod
     def extract_relevant_sentences(text: str, keywords: list[str], n: int = 6) -> list[str]:

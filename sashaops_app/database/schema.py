@@ -448,6 +448,39 @@ CREATE TABLE IF NOT EXISTS scraper_runs (
     started_at    TEXT NOT NULL,
     completed_at  TEXT
 );
+
+-- Phase 2: company payouts (dividends / bonus / rights) from the PSX company page.
+CREATE TABLE IF NOT EXISTS psx_dividends (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol       TEXT NOT NULL,
+    period       TEXT,                    -- e.g. 2025 | Q1 2026
+    payout_type  TEXT,                    -- cash | bonus | right
+    value        TEXT,                    -- as printed (e.g. "45%" or "4.50")
+    announced_at TEXT,
+    fetched_at   TEXT NOT NULL,
+    UNIQUE(symbol, period, payout_type, value)
+);
+CREATE INDEX IF NOT EXISTS ix_psx_dividends_symbol ON psx_dividends(symbol);
+
+-- Phase 2: one row per BaseScraper.fetch(). Drives the Data Health card and the
+-- regression suite. Richer than scraper_runs (status enum, method, source, artifacts).
+CREATE TABLE IF NOT EXISTS scrape_log (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    scraper_id        TEXT NOT NULL,
+    status            TEXT NOT NULL,
+    rows_inserted     INTEGER DEFAULT 0,
+    rows_updated      INTEGER DEFAULT 0,
+    rows_failed       INTEGER DEFAULT 0,
+    started_at        TEXT NOT NULL,
+    finished_at       TEXT,
+    duration_ms       INTEGER,
+    error_message     TEXT,
+    source_url        TEXT,
+    method_used       TEXT,
+    artifacts_json    TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_scrape_log_scraper
+    ON scrape_log(scraper_id, started_at DESC);
 """
 
 
@@ -483,6 +516,29 @@ def _drop_deprecated_tables(db) -> None:
 def _apply_column_additions(db) -> None:
     """Add new columns to existing tables that predate them (idempotent)."""
     _add_column_if_missing(db, "psx_companies", "market_cap", "REAL")
+    # Phase 2: everything the PSX company page displays (Equity + Company Profile).
+    for _c, _t in (
+        ("shares_outstanding", "REAL"), ("free_float", "REAL"), ("free_float_pct", "REAL"),
+        ("pe_ttm", "REAL"), ("week52_high", "REAL"), ("week52_low", "REAL"),
+        ("ceo", "TEXT"), ("chairman", "TEXT"), ("company_secretary", "TEXT"),
+        ("address", "TEXT"), ("registrar", "TEXT"), ("business_description", "TEXT"),
+        ("profile_fetched_at", "TEXT"),
+    ):
+        _add_column_if_missing(db, "psx_companies", _c, _t)
+    for _c, _t in (("close", "REAL"), ("total_trades", "INTEGER")):
+        _add_column_if_missing(db, "psx_prices", _c, _t)
+
+    # Phase 2 provenance: every macro observation must be traceable back to the
+    # exact page and the raw text it was parsed from, so that when a source
+    # silently changes shape the discrepancy is auditable and correctable.
+    for _c, _t in (
+        ("source_url", "TEXT"),       # exact page/endpoint the value came from
+        ("source_snippet", "TEXT"),   # raw as-printed text the number was parsed from
+        ("method_used", "TEXT"),      # html_bs4 | json_api | playwright | pdf | ocr
+        ("scraper_id", "TEXT"),
+        ("sanity_flag", "TEXT"),      # NULL = ok | 'implausible' (never delete, flag)
+    ):
+        _add_column_if_missing(db, "pk_macro", _c, _t)
     # Balance-sheet / cash-flow columns for richer ratios (Altman, coverage, peer comp).
     for _col in ("ebit", "retained_earnings", "inventory", "receivables", "payables",
                  "interest_expense", "depreciation", "ocf", "capex"):

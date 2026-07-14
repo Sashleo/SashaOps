@@ -42,6 +42,10 @@ _DOMAIN_KEYWORDS = [
 
 class OGRAPricesScraper(BasePakGovScraper):
     scraper_id = "ogra_prices"
+    label = "OGRA fuel prices"
+    category = "regulator"
+    default_freshness_hours = 336
+    target_success_rate = 0.0   # set from the live suite (Task 2.4)
 
     def scrape(self) -> Optional[dict]:
         out: dict = {}

@@ -45,6 +45,10 @@ _DOMAIN_KEYWORDS = [
 
 class PBSLsmiScraper(BasePakGovScraper):
     scraper_id = "pbs_lsmi"
+    label = "PBS statistics"
+    category = "stats"
+    default_freshness_hours = 720
+    target_success_rate = 0.0   # set from the live suite (Task 2.4)
 
     def scrape(self) -> Optional[dict]:
         out: dict = {}
