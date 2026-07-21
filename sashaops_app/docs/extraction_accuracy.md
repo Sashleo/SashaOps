@@ -86,6 +86,24 @@ trade receivables) so a sub-line can never be promoted to a statement total.
 
 ---
 
+### Defence 2b - Sign guard against contra/deduction lines
+
+Wiring the parser in caught a further real failure: the pattern `^sales?` matched
+**"Sales tax (57,706,226)"** on PAKT and stored revenue as **-57,706 bn**. Deduction
+and contra lines sit right next to the real revenue line and read very similarly.
+
+Two fixes, one specific and one general:
+
+- the revenue patterns now exclude tax / returns / discount / commission variants;
+- a **sign guard** rejects any negative candidate for a field that can never be
+  negative (`revenue`, `total_assets`, `current_assets`, `current_liabilities`,
+  `total_liabilities`, `cash`, `inventory`) and keeps searching. Profit lines are
+  deliberately excluded from this rule, because losses are real.
+
+After the guard, PAKT resolves to **+139.018 bn "Net Turnover"** - the correct line.
+
+---
+
 ## Defence 3 - Explicit column choice
 
 Statements print 2-4 numeric columns: current year / prior year, consolidated /

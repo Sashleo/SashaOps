@@ -108,11 +108,16 @@ def _columns(line: str, after: int = 0) -> list[float]:
 # the START of the meaningful part of the line. Balance-sheet totals REQUIRE "total".
 
 _FIELDS = {
+    # Revenue. Guard against deduction lines that merely contain "sales"
+    # ("Sales tax", "Sales returns", "Cost of sales") - a real corpus failure:
+    # "^sales?" matched "Sales tax (57,706,226)" and stored NEGATIVE revenue.
     "revenue": [
         ("high",   r"^\s*(?:net\s+)?revenue\s+from\s+contracts?\s+with\s+customers"),
-        ("high",   r"^\s*(?:net\s+)?sales?\s*[-–]?\s*(?:net)?\b"),
-        ("high",   r"^\s*(?:net\s+)?turnover\s*[-–]?\s*(?:net)?\b"),
-        ("medium", r"^\s*(?:gross\s+)?revenue\b"),
+        ("high",   r"^\s*net\s+sales\b(?!\s*tax)"),
+        ("high",   r"^\s*sales\s*[-–]\s*net\b"),
+        ("high",   r"^\s*(?:net\s+)?turnover\b(?!\s*tax)"),
+        ("medium", r"^\s*(?:gross\s+)?revenue\b(?!\s*(?:tax|reserve))"),
+        ("medium", r"^\s*sales\b(?!\s*(?:tax|return|discount|commission|promotion))"),
         ("medium", r"^\s*(?:net\s+)?interest\s+income\b"),      # banks
         ("medium", r"^\s*mark[\s-]*up\s*/?\s*(?:return|interest)\s+earned"),  # banks
     ],
@@ -166,6 +171,14 @@ _SUBITEM_GUARD = re.compile(
     re.I,
 )
 
+# Sign guard. These can never legitimately be negative on a statement, so a negative
+# candidate means we matched a deduction/contra line (e.g. "Sales tax (57,706,226)")
+# and must keep looking. Profit lines are excluded: losses are real.
+_MUST_BE_POSITIVE = {
+    "revenue", "total_assets", "current_assets",
+    "current_liabilities", "total_liabilities", "cash", "inventory",
+}
+
 
 def _clean_line(line: str) -> str:
     # Repair number noise first, then strip leading note-reference numbers.
@@ -200,6 +213,10 @@ def parse_statements(text: str) -> dict:
                 m = rx.match(line)
                 cols = _columns(line, after=m.end())
                 if not cols:
+                    continue
+                # Sign guard: a negative here means a deduction/contra line was
+                # matched, not the real total. Keep searching.
+                if field in _MUST_BE_POSITIVE and cols[0] <= 0:
                     continue
                 hit = {
                     "raw": cols[0],                 # current period = first column

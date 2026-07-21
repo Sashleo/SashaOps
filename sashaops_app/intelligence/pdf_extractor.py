@@ -51,7 +51,7 @@ class PdfplumberTablesExtractor:
                         cells = [str(c).strip() for c in row if c is not None]
                         if cells:
                             lines.append(" ".join(cells))
-        fin = _parse_financials("\n".join(lines))
+        fin = parse_financials_accurate("\n".join(lines))
         return {"financials": fin, "method": self.method, "confidence": self.confidence}
 
 
@@ -68,7 +68,7 @@ class PdfplumberTextExtractor:
                 t = page.extract_text() or ""
                 if t:
                     chunks.append(t)
-        fin = _parse_financials("\n".join(chunks))
+        fin = parse_financials_accurate("\n".join(chunks))
         return {"financials": fin, "method": self.method, "confidence": self.confidence}
 
 
@@ -171,7 +171,7 @@ class PaddleOCRExtractor:
                         lines.append(entry[1][0])
                     except Exception:
                         pass
-        return {"financials": _parse_financials("\n".join(lines)), "method": self.method,
+        return {"financials": parse_financials_accurate("\n".join(lines)), "method": self.method,
                 "confidence": self.confidence}
 
 
