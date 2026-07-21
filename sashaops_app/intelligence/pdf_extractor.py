@@ -24,6 +24,7 @@ import structlog
 from intelligence.psx_report_parser import (
     _parse_financials, MAX_PAGES, OCR_MAX_PAGES, OCR_DPI,
 )
+from intelligence.statement_parser import parse_financials_accurate, quality_score
 
 log = structlog.get_logger()
 
@@ -31,7 +32,8 @@ _MIN_FIELDS = 3
 
 
 def _matched(fin: dict) -> int:
-    return sum(1 for v in (fin or {}).values() if v is not None)
+    return sum(1 for k, v in (fin or {}).items()
+               if not k.startswith("_") and v is not None)
 
 
 class PdfplumberTablesExtractor:
@@ -92,7 +94,7 @@ class TesseractRawExtractor:
         text = "\n".join(parts)
         log.info("Scanned PDF detected - running OCR", method=self.method,
                  pages=len(images), chars=len(text))
-        return {"financials": _parse_financials(text), "method": self.method,
+        return {"financials": parse_financials_accurate(text), "method": self.method,
                 "confidence": self.confidence}
 
 
@@ -121,7 +123,7 @@ class TesseractPreprocessedExtractor:
         text = "\n".join(parts)
         log.info("Scanned PDF detected - running OCR", method=self.method,
                  pages=len(images), chars=len(text))
-        return {"financials": _parse_financials(text), "method": self.method,
+        return {"financials": parse_financials_accurate(text), "method": self.method,
                 "confidence": self.confidence}
 
     @staticmethod
@@ -195,19 +197,36 @@ def extract_financials(pdf_bytes: bytes, ocr: bool = True) -> dict:
         if os.environ.get("PADDLEOCR") == "true":
             extractors.append(PaddleOCRExtractor())
 
+    # Run the methods and keep the BEST result, not merely the first with >=3 fields.
+    # "Best" = the one whose balance sheet reconciles and has the most high-confidence
+    # values (statement_parser.quality_score). A method that balances is trusted over
+    # one that returns more but unreconciled numbers - accuracy over field count.
+    best = None
+    best_score = None
     for extractor in extractors:
         try:
             result = extractor.extract(pdf_bytes)
         except Exception as e:
             log.warning("Extractor failed", method=extractor.__class__.__name__, error=str(e)[:120])
             continue
-        if result and result.get("financials"):
-            n = _matched(result["financials"])
-            if n >= _MIN_FIELDS:
-                log.info("Extraction succeeded", method=result["method"], matched_fields=n)
-                return result
-            log.debug("Extractor returned insufficient data",
-                      method=result.get("method"), matched_fields=n)
+        if not (result and result.get("financials")):
+            continue
+        fin = result["financials"]
+        n = _matched(fin)
+        score = quality_score(fin)
+        log.debug("Extractor result", method=result.get("method"), matched_fields=n,
+                  balance_ok=fin.get("_balance_ok"), n_high=fin.get("_n_high"), score=str(score))
+        if n >= _MIN_FIELDS and (best_score is None or score > best_score):
+            best, best_score = result, score
+            # A reconciled balance sheet is authoritative - stop early.
+            if fin.get("_balance_ok") is True:
+                break
+
+    if best is not None:
+        log.info("Extraction succeeded", method=best["method"],
+                 matched_fields=_matched(best["financials"]),
+                 balance_ok=best["financials"].get("_balance_ok"))
+        return best
 
     if ocr:
         log.warning("All extractors failed - no financial data")

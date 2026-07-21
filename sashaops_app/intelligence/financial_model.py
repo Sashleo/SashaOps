@@ -1037,11 +1037,12 @@ def run_local_analysis_psx(ticker: str) -> dict:
     src = doc.get("_source", "psx_summary")
     ocr = bool(doc.get("_ocr"))
 
-    # PSX statements are reported in PKR thousands — scale monetary fields to actual
-    # PKR so absolute outputs (DCF, revenue) are in the correct magnitude (billions,
-    # not millions). Ratios are unit-independent so this doesn't change them. The
-    # market-cap STUB is already in PKR millions, so it is not rescaled.
-    if not doc.get("_stub"):
+    # Unit scaling. The accuracy-hardened statement_parser detects the real unit
+    # (thousands / millions / actual rupees) per report and ships values ALREADY in
+    # actual PKR, marked with _already_scaled - those must NOT be rescaled here or a
+    # report in millions/actual rupees would be off by 1000x. Only legacy inputs that
+    # are known-thousands and NOT pre-scaled get the historical x1000.
+    if not doc.get("_stub") and not doc.get("_already_scaled"):
         _SCALE = 1_000
         _MONEY = ("revenue", "gross_profit", "ebitda", "ebit", "net_income",
                   "total_assets", "total_debt", "cash", "shareholders_equity",
