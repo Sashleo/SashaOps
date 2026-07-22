@@ -79,6 +79,12 @@ def _normalize_numbers(line: str) -> str:
     def _fix_periods(m):
         return m.group(0).replace(".", ",")
     s = re.sub(r"\b\d{1,3}(?:\.\d{3}){2,}\b", _fix_periods, s)
+    # Leading-zero glue: "Sales 0171,450" is a mangled "171,450". Without this the
+    # number regex matches the 4-digit run "0171" and stores 171 (holdout: FIL).
+    # The lookbehind is essential: without it this also fires INSIDE a legitimate
+    # number - "61,782,057,256" would lose its ",057," group and parse as 61,782
+    # (a 1,000,000x understatement caught by the sample-1 regression check).
+    s = re.sub(r"(?<![\d,])0+(\d{1,3},\d{3})", r"\1", s)
     return s
 
 
@@ -141,8 +147,12 @@ _FIELDS = {
     "current_assets": [
         ("high",   r"^\s*total\s+current\s+assets\b"),
     ],
+    # Equity. CRITICAL: Pakistani balance sheets close with "TOTAL EQUITY AND
+    # LIABILITIES", which equals TOTAL ASSETS, not equity. A bare "^total equity"
+    # matches it and silently stores assets as equity (holdout: AGHA, GAMON showed
+    # total_assets == total_equity). The negative lookahead blocks that.
     "total_equity": [
-        ("high",   r"^\s*total\s+equity\b"),
+        ("high",   r"^\s*total\s+equity\b(?!\s*(?:and|&)\s*liabilit)"),
         ("high",   r"^\s*total\s+(?:share\s*holders'?|shareholders'?)\s+equity\b"),
         ("medium", r"^\s*(?:total\s+)?equity\s+attributable\s+to\s+(?:the\s+)?(?:owners|equity\s+holders|shareholders)"),
     ],
@@ -157,7 +167,11 @@ _FIELDS = {
         ("medium", r"^\s*cash\s+and\s+(?:bank\s+balances?|cash\s+equivalents?)\b"),
     ],
     "inventory": [
-        ("medium", r"^\s*(?:stock\s+in\s+trade|inventor(?:y|ies)|stores?,?\s+spares?)\b"),
+        # Inventory = stock in trade. "Stores, spares and loose tools" is a
+        # SEPARATE consumables line; the holdout run matched it as inventory
+        # on 6 firms, so it is deliberately excluded here.
+        ("medium", r"^\s*stock[\s-]*in[\s-]*trade"),
+        ("medium", r"^\s*inventor(?:y|ies)"),
     ],
     "interest_expense": [
         ("medium", r"^\s*(?:finance\s+cost|financial\s+charges|mark[\s-]*up.*expensed)\b"),
@@ -167,7 +181,12 @@ _FIELDS = {
 # Lines that must never be treated as a balance-sheet total even if a keyword appears.
 _SUBITEM_GUARD = re.compile(
     r"long\s+term\s+investments?|spare\s+parts?|loose\s+tools?|stores?\b|"
-    r"advances?|deposits?|prepayments?|other\s+receivables?|trade\s+(?:debts?|receivables?)",
+    r"advances?|deposits?|prepayments?|other\s+receivables?|trade\s+(?:debts?|receivables?)|"
+    # Insurance/Takaful sub-fund totals ("Total assets of Operator's Fund") are a
+    # SEGMENT, not the company total. Matched via the "of ... Fund" qualifier so a
+    # real mutual fund - where "Fund" IS the entity - still parses normally.
+    r"\bof\s+(?:the\s+)?(?:operator|participant|statutory|policyholder|shareholder)[’'s]*\s*"
+    r"(?:fund|sub[\s-]*fund)",
     re.I,
 )
 
@@ -178,6 +197,26 @@ _MUST_BE_POSITIVE = {
     "revenue", "total_assets", "current_assets",
     "current_liabilities", "total_liabilities", "cash", "inventory",
 }
+
+# Plausible magnitudes for a PSX-listed company, in ACTUAL rupees AFTER scaling.
+# Used to CHOOSE the unit scale: the correct scale is the one that puts the most
+# extracted values inside these ranges. A printed header is only a prior - a holdout
+# run found a bank whose report mentioned "million" in unrelated prose, which sent
+# total assets to 3.3 QUADRILLION when the figures were already actual rupees.
+_PLAUSIBLE = {
+    "revenue":             (1e6, 5e12),
+    "total_assets":        (1e6, 2e13),
+    "current_assets":      (1e5, 5e12),
+    "current_liabilities": (1e5, 5e12),
+    "total_liabilities":   (1e5, 2e13),
+    "total_equity":        (1e5, 5e12),
+    "net_income":          (1e5, 1e12),
+    "gross_profit":        (1e5, 2e12),
+    "ebit":                (1e5, 2e12),
+    "cash":                (1e4, 5e12),
+    "inventory":           (1e4, 2e12),
+}
+_CANDIDATE_SCALES = (1, 1_000, 1_000_000)
 
 
 def _clean_line(line: str) -> str:
@@ -206,10 +245,11 @@ def parse_statements(text: str) -> dict:
                 line = _clean_line(raw_line)
                 if not rx.match(line):
                     continue
-                # Reject balance-sheet totals that are actually sub-items.
-                if field in ("current_liabilities", "current_assets", "total_assets",
-                             "total_equity", "total_liabilities") and _SUBITEM_GUARD.search(line):
+                # Reject sub-item lines for EVERY field. A totals-only guard let
+                # inventory match "Stores, spares and loose tools" on 6 holdout firms.
+                if _SUBITEM_GUARD.search(line):
                     continue
+
                 m = rx.match(line)
                 cols = _columns(line, after=m.end())
                 if not cols:
@@ -232,8 +272,9 @@ def parse_statements(text: str) -> dict:
                 break
 
     # ── Decide the unit scale ────────────────────────────────────────────────
-    if scale is None:
-        scale, evidence = _infer_scale(found, evidence)
+    # Always validate against plausibility, even when a header was found: a
+    # stray "million" elsewhere in a long report must not inflate statements.
+    scale, evidence = _choose_scale(found, scale, evidence)
 
     for f, h in found.items():
         h["scale"] = scale
@@ -245,22 +286,47 @@ def parse_statements(text: str) -> dict:
     return found
 
 
-def _infer_scale(found: dict, evidence: str) -> tuple[int, str]:
+def _plausibility(found: dict, scale: int) -> int:
+    """How many extracted values land inside their plausible range at this scale."""
+    score = 0
+    for f, h in found.items():
+        if f.startswith("_") or f not in _PLAUSIBLE:
+            continue
+        lo, hi = _PLAUSIBLE[f]
+        v = abs(h["raw"] * scale)
+        if lo <= v <= hi:
+            score += 1
+    return score
+
+
+def _choose_scale(found: dict, header_scale: Optional[int], evidence: str) -> tuple[int, str]:
     """
-    No explicit unit header. Pick the scale from magnitude: an unscaled total_assets
-    for a real listed company sits in the millions-to-trillions of ACTUAL rupees.
-    If the raw total_assets is already >= 1e8, it is printed in actual rupees (x1);
-    otherwise it is a thousands table (x1000). This is the conservative choice and is
-    validated by the balance-sheet cross-check.
+    Choose the unit scale that makes the MOST extracted values plausible.
+
+    The printed header is a prior, not gospel: a 300-page annual report can mention
+    "million" in prose far from the statements. The holdout run caught exactly that
+    (BAHL total assets -> 3.3 quadrillion). So every candidate scale is scored on how
+    many values land in a sane range, and the header only breaks ties.
     """
-    ta = found.get("total_assets", {}).get("raw")
-    rev = found.get("revenue", {}).get("raw")
-    probe = ta if ta is not None else rev
-    if probe is None:
-        return 1_000, evidence + " | default x1000 (no anchor to infer from)"
-    if probe >= 1e8:
-        return 1, evidence + f" | inferred x1 (raw magnitude {probe:.0f} already actual rupees)"
-    return 1_000, evidence + f" | inferred x1000 (raw magnitude {probe:.0f} is a thousands table)"
+    scored = []
+    for s in _CANDIDATE_SCALES:
+        scored.append((_plausibility(found, s), s))
+    best_score = max(s for s, _ in scored) if scored else 0
+
+    if best_score == 0:
+        # Nothing to judge by: trust the header, else the historical x1000 default.
+        if header_scale:
+            return header_scale, evidence + " | header used (no values to validate)"
+        return 1_000, evidence + " | default x1000 (nothing to infer from)"
+
+    winners = [s for sc, s in scored if sc == best_score]
+    if header_scale in winners:
+        return header_scale, evidence + f" | header confirmed by plausibility ({best_score} fields in range)"
+    chosen = min(winners)   # prefer the smaller (less inflating) scale on a tie
+    if header_scale and header_scale not in winners:
+        return chosen, (f"header said x{header_scale} but that made values implausible; "
+                        f"chose x{chosen} ({best_score} fields in range)")
+    return chosen, evidence + f" | chose x{chosen} by plausibility ({best_score} fields in range)"
 
 
 def _balance_check(found: dict) -> dict:
