@@ -168,6 +168,66 @@ already applied to the scraped macro data.
 
 ---
 
+## The fallback chain, designed from evidence
+
+The chain was not ordered by intuition. Every method was run against EVERY document
+in both 76-firm corpora, independently (tools/pdf_methods.py), to measure how each one
+actually performs per document type. 131 documents, 5 methods.
+
+### Per-method accuracy matrix
+
+| Doc type | Method | Hit rate | Avg fields | Median cost | Verdict |
+|---|---|---|---|---|---|
+| Digital (61) | **pdfplumber_text** | **74%** | 5.5 | 16s | lead |
+| Digital (61) | pdfplumber_tables | 21% | 2.1 | 16s | tie-break only |
+| Scanned (70) | pdfplumber (either) | 1% | - | fast | blind to scans |
+| Scanned (30) | **tesseract_raw** | **73%** | 5.0 | 76s | OCR lead |
+| Scanned (30) | tesseract_preprocessed (denoise) | 43% | 3.9 | 191s | dropped |
+| Scanned (30) | tesseract_deskew (no denoise) | 45% | 4.0 | 258s | last resort |
+
+### Head-to-head, on identical documents
+
+- **pdfplumber_text beat pdfplumber_tables 43-0** (43 wins, 0 losses, 88 ties), at
+  equal cost. So text leads and tables is only a tie-break.
+- **tesseract_raw beat pdfplumber_text 22-0** on scanned docs: OCR is the only thing
+  that reads a scan.
+- **Every OpenCV preprocessing variant LOST to raw 15-2** on the same 30 scanned docs.
+  denoise and deskew-only produced the identical record and won the exact same 2
+  documents (DCR, EFGH). This proves the damage is not the denoise step - it is that
+  feeding Tesseract a deskewed/Otsu-thresholded image is worse than letting Tesseract
+  binarise the raw 200-DPI render itself. Preprocessing is therefore demoted to a
+  last resort, and the slow denoise variant is dropped in favour of deskew-only.
+
+(Note on timing: one preprocessed run clocked 4.7 hours - that was the laptop
+sleeping mid-document, not real cost. Medians are used throughout to be robust to it.
+The accuracy verdict does not depend on timing at all: sleep cannot change what OCR
+reads, and preprocessing lost on accuracy 15-2.)
+
+### The resulting router (escalating, in extract_financials)
+
+```
+TIER 1  cheap, always:      pdfplumber_text  ->  pdfplumber_tables (tie-break)
+TIER 2  only if tier 1 < 3 fields (=> scanned):   tesseract_raw
+TIER 3  only if raw < 3 fields:                   tesseract_deskew   (last resort)
+```
+
+Escalation is the efficiency: a digital PDF that tier 1 reads never pays for OCR
+(JDWS: pdfplumber_text, 13.5s, no OCR), and a scanned PDF that raw reads never pays
+for the slow preprocessing (AGIL: escalates to tesseract_raw, stops there). A
+reconciled balance sheet at any tier is authoritative and stops the escalation
+immediately. Every OCR page has a 90s cap so no single page can hang the background
+job. This is the classify-then-route design: the cheap text-layer size classifies
+digital vs scanned, and each class routes to the method proven best for it.
+
+### Honest coverage
+
+7 of 70 scanned documents (10%) are read by no method - mostly ETFs and very
+low-quality scans with non-standard layouts. They surface as "no data" with full
+provenance (nothing is guessed), and are candidates for a future docTR/table-aware
+tier if that share grows.
+
+---
+
 ## Choosing between methods: accuracy beats quantity
 
 The chain (pdfplumber tables -> pdfplumber text -> Tesseract raw -> Tesseract +
