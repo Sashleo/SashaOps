@@ -145,7 +145,12 @@ _FIELDS = {
         ("high",   r"^\s*total\s+assets\b"),
     ],
     "current_assets": [
+        # A labelled total is best; but many Pakistani statements (and 6-year
+        # highlight tables) label the subtotal simply "Current assets". The
+        # "current portion / maturity / tax / account" sub-item lines are blocked by
+        # the anchor (they don't start with "current assets") and by _SUBITEM_GUARD.
         ("high",   r"^\s*total\s+current\s+assets\b"),
+        ("medium", r"^\s*current\s+assets\b(?!\s*[:\-])"),
     ],
     # Equity. CRITICAL: Pakistani balance sheets close with "TOTAL EQUITY AND
     # LIABILITIES", which equals TOTAL ASSETS, not equity. A bare "^total equity"
@@ -154,10 +159,16 @@ _FIELDS = {
     "total_equity": [
         ("high",   r"^\s*total\s+equity\b(?!\s*(?:and|&)\s*liabilit)"),
         ("high",   r"^\s*total\s+(?:share\s*holders'?|shareholders'?)\s+equity\b"),
+        # Banks and DFIs do NOT split current/non-current; their balance sheet closes
+        # with "NET ASSETS" (= Assets - Liabilities = equity). Verified on ABL, BML,
+        # HBL. "Net assets per share/value" is a per-unit ratio, not the total - block it.
+        ("high",   r"^\s*net\s+assets\b(?!\s*(?:per|value|attributable|/\s*share))"),
+        ("medium", r"^\s*(?:total\s+)?(?:share\s+capital\s+and\s+reserves|capital\s+and\s+reserves)\b"),
         ("medium", r"^\s*(?:total\s+)?equity\s+attributable\s+to\s+(?:the\s+)?(?:owners|equity\s+holders|shareholders)"),
     ],
     "current_liabilities": [
         ("high",   r"^\s*total\s+current\s+liabilities\b"),
+        ("medium", r"^\s*current\s+liabilities\b(?!\s*[:\-])"),
     ],
     "total_liabilities": [
         ("high",   r"^\s*total\s+liabilities\b"),
@@ -225,6 +236,51 @@ def _clean_line(line: str) -> str:
     return re.sub(r"^\s*\d{1,2}(?:\.\d+)?\s+", "", line)
 
 
+def _pick_candidate(candidates: list, conf: str, pat: str) -> Optional[dict]:
+    """
+    Choose the best matching line for a field. The canonical primary Statement of
+    Financial Position prints exactly TWO numeric columns (current period, prior
+    period) with the current period first. A 6-year "Financial Highlights" table
+    prints 5-6 columns and, on Pakistani reports, usually oldest-year-first - so
+    taking its first column silently reports a figure from years ago (HBL: total
+    assets 3.85tn in 2020 vs 7.71tn in 2025). Prefer the 2-3 column primary line and
+    fall back to a wide highlights line only when nothing else matched.
+    """
+    if not candidates:
+        return None
+
+    def _penalty(n: int) -> int:
+        if n in (2, 3):
+            return 0        # primary statement (current + prior [+ note])
+        if n == 1:
+            return 1        # single-column statement
+        if n == 4:
+            return 2
+        return 3            # >=5 columns: multi-year highlights table
+
+    best_i = min(range(len(candidates)),
+                 key=lambda i: (_penalty(len(candidates[i][1])), i))
+    line, cols = candidates[best_i]
+    # Column choice. A primary statement lists the CURRENT period FIRST, so column 0.
+    # But a 6-year "Financial Highlights" table (>=5 columns) lists years oldest to
+    # newest left-to-right (verified on HBL: Total Assets 3.85tn[2020] ... 7.71tn[2025]),
+    # so the CURRENT year is the LAST column. Taking column 0 there reports figures
+    # from years ago. Only wide highlight rows flip to the last column; the canonical
+    # 2-3 column statement stays on column 0.
+    if len(cols) >= 5:
+        idx = len(cols) - 1
+    else:
+        idx = 0
+    return {
+        "raw": cols[idx],
+        "column": idx,
+        "all_columns": cols[:6],
+        "source_line": line.strip()[:120],
+        "label": pat,
+        "confidence": conf,
+    }
+
+
 def parse_statements(text: str) -> dict:
     """
     Parse a financial-statement text block into fields with full provenance.
@@ -240,7 +296,7 @@ def parse_statements(text: str) -> dict:
     for field, anchors in _FIELDS.items():
         for conf, pat in anchors:
             rx = re.compile(pat, re.I)
-            hit = None
+            candidates = []
             for raw_line in lines:
                 line = _clean_line(raw_line)
                 if not rx.match(line):
@@ -258,15 +314,8 @@ def parse_statements(text: str) -> dict:
                 # matched, not the real total. Keep searching.
                 if field in _MUST_BE_POSITIVE and cols[0] <= 0:
                     continue
-                hit = {
-                    "raw": cols[0],                 # current period = first column
-                    "column": 0,
-                    "all_columns": cols[:5],
-                    "source_line": line.strip()[:120],
-                    "label": pat,
-                    "confidence": conf,
-                }
-                break
+                candidates.append((line, cols))
+            hit = _pick_candidate(candidates, conf, pat)
             if hit:
                 found[field] = hit
                 break

@@ -231,32 +231,64 @@ def _schedule_background_ocr(ticker: str, pdf_bytes: bytes, url: str) -> None:
 
 
 def find_latest_report_url(ticker: str) -> Optional[str]:
-    """Pick the most recent annual/financial-results PDF from PSX announcements."""
+    """
+    Pick the PSX announcement PDF most likely to contain a FULL Statement of
+    Financial Position (balance sheet), not just a P&L summary.
+
+    Report type matters far more than recency for balance-sheet extraction:
+      - A full "Annual Report" carries the complete audited statement of financial
+        position (all of current assets/liabilities, equity, debt).
+      - A "Quarterly/Half-Yearly Report" transmission booklet carries a CONDENSED
+        interim statement of financial position - still has the balance sheet.
+      - A one-page "Financial Results for the Quarter" sheet is a P&L summary ONLY,
+        with no balance sheet. Historically these short results sheets outscored the
+        annual report on recency and were chosen, so current assets/liabilities/
+        equity never parsed (ENGRO picked a 4-page 9-month results sheet over its
+        annual report; LUCK the same). Tier by completeness first, date only within
+        a tier.
+    """
     try:
         from intelligence.exchange_crawlers.psx import fetch_psx_company
         data = fetch_psx_company(ticker, fetch_types=["announcements"])
     except Exception:
         return None
     anns = (data or {}).get("financial_announcements") or []
+
+    def _tier(title: str) -> int:
+        """Higher = more likely to carry a complete statement of financial position."""
+        t = title.lower()
+        is_transmission = "transmission" in t or "report" in t
+        is_short_result = "financial results" in t or "result" in t
+        # A "Transmission of Annual Report" is the full audited book - best source.
+        if "annual" in t and (is_transmission or "report" in t or "account" in t):
+            return 4
+        # Any annual mention still beats interim.
+        if "annual" in t:
+            return 3
+        # Quarterly / half-yearly REPORT booklets carry a condensed balance sheet.
+        if is_transmission and any(k in t for k in
+                                   ("quarter", "half", "nine month", "six month",
+                                    "third quarter", "1st quarter", "interim")):
+            return 2
+        # Short "financial results" P&L sheets: last resort (no balance sheet).
+        if is_short_result or "account" in t or "financial" in t:
+            return 1
+        return 0
+
     candidates = []
     for a in anns:
-        title = (a.get("title") or "").lower()
         url = a.get("pdf_url")
         if not url:
             continue
-        score = 0
-        if "annual" in title:                          score += 3
-        if "financial" in title or "accounts" in title: score += 2
-        if "result" in title:                           score += 1
-        if score:
-            candidates.append((score, a.get("date", ""), url))
+        tier = _tier(a.get("title") or "")
+        if tier:
+            candidates.append((tier, a.get("date", ""), url))
     if not candidates:
-        # Fall back to the first announcement that has a PDF
         for a in anns:
             if a.get("pdf_url"):
                 return a["pdf_url"]
         return None
-    # Prefer highest score, then most recent date
+    # Best tier first, then most recent within the tier.
     candidates.sort(key=lambda c: (c[0], c[1]), reverse=True)
     return candidates[0][2]
 

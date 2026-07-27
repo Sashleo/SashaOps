@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 
 import structlog
 
@@ -55,20 +56,67 @@ class PdfplumberTablesExtractor:
         return {"financials": fin, "method": self.method, "confidence": self.confidence}
 
 
+# The PRIMARY statement of financial position in a long annual report (200-400 pages
+# for banks) sits far past a blind page cap. Reading only the first MAX_PAGES reaches
+# the "Financial Highlights" 6-year table instead - whose FIRST column is the OLDEST
+# year, so HBL's total assets parsed as the 2020 figure. These markers let the text
+# extractor SEEK the real audited statements before giving up on the page budget.
+_STATEMENT_MARKERS = re.compile(
+    r"statement\s+of\s+financial\s+position|balance\s+sheet|"
+    r"statement\s+of\s+profit\s+(?:or\s+loss|and\s+loss)|profit\s+and\s+loss\s+account",
+    re.I,
+)
+# Highlights / six-year-review pages carry multi-year tables that mislead column
+# choice; do not let them stand in for the audited statement.
+_HIGHLIGHTS_MARKERS = re.compile(
+    r"financial\s+highlights|(?:six|ten|eleven)[\s-]*year|horizontal\s+analysis|"
+    r"vertical\s+analysis|key\s+operating|financial\s+summary", re.I,
+)
+
+
 class PdfplumberTextExtractor:
-    """Digital PDFs without clean tables: parse the text layer."""
+    """Digital PDFs without clean tables: parse the text layer.
+
+    Reads pages lazily and STOPS once it has captured the audited statement pages
+    (statement of financial position + profit or loss), so a 400-page bank report is
+    not scanned in full yet its deep balance sheet is still reached. Highlights pages
+    are captured only as a fallback when no audited statement page is found.
+    """
     method = "pdfplumber_text"
     confidence = 0.7
+    # Hard ceiling so a pathological PDF cannot make us read hundreds of pages.
+    _SEEK_CAP = 320
 
     def extract(self, pdf_bytes: bytes) -> dict:
         import pdfplumber
-        chunks: list[str] = []
+        statement_chunks: list[str] = []
+        highlights_chunks: list[str] = []
+        head_chunks: list[str] = []
+        seen_statement = False
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-            for page in pdf.pages[:MAX_PAGES]:
+            n = len(pdf.pages)
+            for i, page in enumerate(pdf.pages[:self._SEEK_CAP]):
                 t = page.extract_text() or ""
-                if t:
-                    chunks.append(t)
-        fin = parse_financials_accurate("\n".join(chunks))
+                if not t:
+                    continue
+                if i < MAX_PAGES:
+                    head_chunks.append(t)
+                if _STATEMENT_MARKERS.search(t) and not _HIGHLIGHTS_MARKERS.search(t):
+                    statement_chunks.append(t)
+                    seen_statement = True
+                elif _HIGHLIGHTS_MARKERS.search(t):
+                    highlights_chunks.append(t)
+                # Once we have the audited statements and scanned the cheap head,
+                # stop - no need to read the rest of a long report.
+                if seen_statement and i >= MAX_PAGES:
+                    break
+        # Prefer the audited statement text; fall back to the head (short reports put
+        # the statement in the first pages) plus highlights only if nothing better.
+        if statement_chunks:
+            text = "\n".join(statement_chunks + head_chunks[:5])
+        else:
+            text = "\n".join(head_chunks + highlights_chunks)
+        fin = parse_financials_accurate(text)
         return {"financials": fin, "method": self.method, "confidence": self.confidence}
 
 
