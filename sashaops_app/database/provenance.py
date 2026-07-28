@@ -54,6 +54,9 @@ SANITY_BOUNDS = {
     # masking a genuine parse error (e.g. an OCR misread digit).
     "ogra_petrol_price_pkr_litre": (50.0, 1000.0),
     "ogra_hsd_price_pkr_litre":    (50.0, 1000.0),
+    # PTA total mobile cellular subscribers, millions. Verified 2026-07-28: June
+    # 2026 = 208.06 million. Banded around Pakistan's population scale.
+    "pta_mobile_subscribers_million": (50.0, 300.0),
 }
 
 

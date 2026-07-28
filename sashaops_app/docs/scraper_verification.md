@@ -503,7 +503,57 @@ tables (a level + YoY series is not a single scalar "value" in the same shape
 
 ---
 
-## Priorities 3, 10-11
+## Priority 10 - PTA mobile subscribers (`pta_stats`)
+
+**Status: PASSED (rewritten)**
+**Date verified:** 2026-07-28
+**Source URL:** `https://www.pta.gov.pk/category/telecom-indicators/164`
+**Method used:** `html_bs4` (JSON literal extraction from an inline chart config)
+
+### What was actually wrong
+
+The previous scraper searched page text for a subscriber number near keywords like
+"mobile subscribers" - the real figures are never plain text or an HTML `<table>`.
+Checked live: the page embeds ~20 Highcharts chart configurations as inline
+`<script>` JSON literals, one of which ("Monthly Mobile Cellular Subscribers") has
+per-operator series (Jazz, Ufone, Zong, Telenor, SCO) plus a "Total" series and an
+`xAxis.categories` array of month labels. A raw `<table>` count on the page found 27
+matches, which turned out to be Highcharts tooltip *template strings*
+(`headerFormat`/`footerFormat`), not real tables - confirmed by inspection before
+building the parser around them.
+
+### Values seen on source (ground truth, read by hand before running the scraper)
+
+```
+xAxis.categories: [..., "Apr-26", "May-26", "Jun-26"]
+"Total" series:   [..., 205689662,  206008479,  208057255]
+```
+Latest reported month: **June 2026, Total mobile cellular subscribers = 208,057,255**
+(~208.06 million).
+
+### Value stored by the scraper
+
+`pta_telecom(metric='mobile_subs_total', period='2026-06', value=208.06, unit='million')`.
+Exact match. Divergence 0.00%. **PASS.** `ScrapeStatus.SUCCESS`, 1 row.
+
+### Gotcha for future debugging
+
+The page embeds the SAME series name ("Total") in multiple charts (Monthly and
+Annual subscriber charts both have one). Naively taking the first `"name":"Total"`
+match anywhere on the page can silently pick up the wrong chart's numbers. The fix
+scopes extraction to the text between the target chart's own title string and the
+NEXT `Highcharts.chart(` call (which starts a different chart) - verified this
+correctly excludes the Annual chart's Total series in a regression test.
+
+### Provenance
+
+Routed through `record_observation()` (`pta_mobile_subscribers_million`,
+`source_url` = the indicators page, `source_snippet` = the matched Total entry and
+period label). Sanity band added to `SANITY_BOUNDS`.
+
+---
+
+## Priorities 3, 11
 
 Pending verification. Entries added as each is completed. All will be routed
 through `record_observation()` so every value is verifiable.

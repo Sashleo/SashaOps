@@ -1,124 +1,125 @@
 """
-gov_scrapers/pta_stats.py — PTA telecom sector indicators.
+gov_scrapers/pta_stats.py — PTA telecom subscriber count.
 
-PTA's indicators page is often JavaScript-rendered; this scraper tries
-the main page, a data/reports page, and press releases. NLP extraction
-surfaces connectivity and broadband policy text.
+Verified 2026-07-28 (docs/scraper_verification.md Priority 10): the previous version
+searched PTA page text for a subscriber number near keywords - the real figures are
+never plain text, they are embedded as Highcharts JS chart configs (JSON literals
+inside inline <script> blocks), which is why the scraper's own comment called the
+page "JavaScript-rendered" (accurate, but the fix is JSON extraction, not a browser -
+the data is already in the raw HTML, just as JS object literals rather than text or
+a <table>).
+
+https://www.pta.gov.pk/category/telecom-indicators/164 embeds a "Monthly Mobile
+Cellular Subscribers" Highcharts chart with per-operator series (Jazz, Ufone, Zong,
+Telenor, SCO) plus a "Total" series, and an xAxis "categories" array of month labels
+(e.g. "Jun-26"). The chart block is bounded by its title string and the next
+`Highcharts.chart(` call (the following chart, Annual Cellular Subscribers) so the
+right "Total" series is read even though the page embeds ~20 charts total.
 """
 
 from __future__ import annotations
 
-from datetime import date
+import re
 from typing import Optional
 
 from intelligence.gov_scrapers.base import BasePakGovScraper
 from database.macro_data import upsert_pta
 
-_PAGES = [
-    # Homepage confirmed accessible June 2026; shows "Telecom Indicators Overview" section
-    # Actual indicator values are JS-rendered on /category/telecom-indicators/164 — static parse gets partial data
-    "https://www.pta.gov.pk/home",
-    "https://www.pta.gov.pk/",
-    "https://www.pta.gov.pk/category/telecom-indicators/164",
-    "https://www.pta.gov.pk/en/telecom-indicators",
-    "https://www.pta.gov.pk/en/data-statistics/",
-]
+_INDICATORS_PAGE = "https://www.pta.gov.pk/category/telecom-indicators/164"
+_CHART_TITLE = '"Monthly Mobile Cellular Subscribers"'
 
-_PRESS_PAGES = [
-    # Press release paths returned 404 in June 2026
-    "https://www.pta.gov.pk/en/media-center/press-releases",
-    "https://www.pta.gov.pk/en/media-center/news",
-]
+_MONTHS = {m: i for i, m in enumerate(
+    ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
 
-_KEYWORDS = [
-    "cellular mobile", "mobile subscribers", "total subscribers",
-    "broadband subscribers", "broadband", "teledensity",
-    "internet subscribers", "3g", "4g", "million",
-]
 
-_DOMAIN_KEYWORDS = [
-    "mobile subscribers", "broadband subscribers", "internet penetration",
-    "telecom sector", "teledensity", "spectrum", "5g", "4g", "3g",
-    "digital pakistan", "e-commerce", "fintech", "mobile banking",
-    "license", "regulatory", "pta", "telecom policy",
-]
+def _period_from_label(label: str) -> Optional[str]:
+    """'Jun-26' -> '2026-06'. None if unparseable."""
+    m = re.match(r"([A-Za-z]{3})-(\d{2})$", label.strip())
+    if not m:
+        return None
+    mon = _MONTHS.get(m.group(1).lower())
+    if not mon:
+        return None
+    year = 2000 + int(m.group(2))
+    return f"{year:04d}-{mon:02d}"
+
+
+def _extract_latest_total(html: str) -> Optional[dict]:
+    """
+    Scope to the "Monthly Mobile Cellular Subscribers" chart block specifically
+    (bounded by the NEXT Highcharts.chart() call, which starts a different chart),
+    so a same-named "Total" series in another chart is never picked up instead.
+    """
+    title_idx = html.find(_CHART_TITLE)
+    if title_idx < 0:
+        return None
+    next_chart_idx = html.find("Highcharts.chart(", title_idx)
+    block = html[title_idx: next_chart_idx if next_chart_idx > 0 else len(html)]
+
+    cat_m = re.search(r'"categories":\s*(\[[^\]]+\])', block)
+    total_m = re.search(r'"name":"Total".*?"data":(\[[^\]]+\])', block)
+    if not cat_m or not total_m:
+        return None
+
+    import json
+    try:
+        categories = json.loads(cat_m.group(1))
+        totals = json.loads(total_m.group(1))
+    except Exception:
+        return None
+    if not categories or not totals or len(categories) != len(totals):
+        return None
+
+    return {
+        "subscribers": totals[-1],
+        "period_label": categories[-1],
+        "period": _period_from_label(categories[-1]),
+    }
 
 
 class PTAStatsScraper(BasePakGovScraper):
     scraper_id = "pta_stats"
-    label = "PTA telecom stats"
+    label = "PTA mobile subscribers"
     category = "stats"
-    default_freshness_hours = 1440
-    target_success_rate = 0.0   # set from the live suite (Task 2.4)
+    default_freshness_hours = 720   # PTA updates this chart roughly monthly
+    # Verified 2026-07-28: June 2026 total (208,057,255) matched the chart's own
+    # embedded data exactly. A single well-defined chart on a stable government
+    # page, so a high target is reasonable.
+    target_success_rate = 0.9
+    source_url = _INDICATORS_PAGE
 
     def scrape(self) -> Optional[dict]:
-        out: dict = {}
-        all_text = ""
+        try:
+            import requests
+            from intelligence.gov_scrapers.base import HEADERS
+            r = requests.get(_INDICATORS_PAGE, headers=HEADERS, timeout=25, verify=False)
+            if r.status_code != 200:
+                return None
+            html = r.text
+        except Exception:
+            return None
 
-        for url in _PAGES:
-            soup = self.get_soup(url)
-            if not soup:
-                continue
-            text = soup.get_text(" ", strip=True)
-            all_text += " " + text
-
-            mobile = self.number_near(
-                text, "cellular mobile", "mobile subscribers",
-                "total subscribers", window=100
-            )
-            bb = self.number_near(text, "broadband subscribers", "broadband", window=90)
-            teledensity = self.number_near(text, "teledensity", window=70)
-            internet = self.number_near(text, "internet subscribers", "internet users", window=90)
-
-            if mobile and mobile > 1:
-                out["mobile_subs"] = mobile
-            if bb and bb > 1:
-                out["broadband_subs"] = bb
-            if teledensity and 0 < teledensity < 200:
-                out["teledensity"] = teledensity
-            if internet and internet > 1:
-                out["internet_subs"] = internet
-            if out:
-                break
-
-        if not out:
-            for press_url in _PRESS_PAGES:
-                press_text = self.get_press_release_text(press_url, max_releases=3)
-                if press_text:
-                    all_text += " " + press_text
-                    mobile = self.number_near(
-                        press_text, "mobile subscribers", "cellular", "subscribers", window=100
-                    )
-                    bb = self.number_near(
-                        press_text, "broadband", "internet subscribers", window=100
-                    )
-                    if mobile and mobile > 1:
-                        out["mobile_subs"] = mobile
-                    if bb and bb > 1:
-                        out["broadband_subs"] = bb
-                    if out:
-                        break
-
-        if all_text.strip():
-            nlp = self.nlp_extract(all_text, _DOMAIN_KEYWORDS)
-            if nlp.get("regulatory_text"):
-                out["regulatory_text"] = nlp["regulatory_text"]
-            if nlp.get("nlp_entities"):
-                out["nlp_entities"] = nlp["nlp_entities"]
-
-        return out if out else None
+        result = _extract_latest_total(html)
+        if not result or not result.get("period"):
+            return None
+        result["_source_url"] = _INDICATORS_PAGE
+        return result
 
     def persist(self, data: dict) -> int:
-        n = 0
-        period = date.today().strftime("%Y-%m")
-        units = {
-            "mobile_subs": "million",
-            "broadband_subs": "million",
-            "teledensity": "%",
-            "internet_subs": "million",
-        }
-        for metric in ("mobile_subs", "broadband_subs", "teledensity", "internet_subs"):
-            if metric in data:
-                upsert_pta(metric, period, data[metric], units[metric])
-                n += 1
-        return n
+        if data.get("subscribers") is None or not data.get("period"):
+            return 0
+        subs_millions = round(data["subscribers"] / 1_000_000, 2)
+        upsert_pta("mobile_subs_total", data["period"], subs_millions, "million")
+        from database.provenance import record_observation
+        record_observation(
+            indicator="pta_mobile_subscribers_million",
+            value=subs_millions,
+            period=data["period"],
+            unit="million",
+            source="PTA",
+            source_url=data.get("_source_url", ""),
+            source_snippet=f"Total (chart) {data['period_label']}: {data['subscribers']}",
+            method_used="html_bs4",
+            scraper_id=self.scraper_id,
+        )
+        return 1
