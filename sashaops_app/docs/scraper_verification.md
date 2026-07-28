@@ -191,7 +191,63 @@ against the live site.
 
 ---
 
-## Priorities 3, 5-11
+## Priority 5 - Forex rates (`sbp_forex`)
+
+**Status: PASSED**
+**Date verified:** 2026-07-28
+**Source URL:** `https://open.er-api.com/v6/latest/USD` (SBP's own rate endpoints
+return 404 / fail DNS resolution from containerised environments — documented in
+the scraper's own header comment; ExchangeRate-API is the working substitute)
+**Method used:** `json_api`
+
+### Values seen on source (ground truth, manually derived from the live API response)
+
+The API is USD-based (`1 USD = N units of quote`), so a PKR cross-rate is
+`rate_PKR = usd_rates["PKR"] / usd_rates[quote]`. Computed by hand before running
+the scraper, per protocol:
+
+| Pair | Ground truth (derived from live API, 2026-07-28) |
+|---|---|
+| USD/PKR | 277.86 |
+| EUR/PKR | 316.18 |
+| GBP/PKR | 369.54 |
+| AED/PKR | 75.66 |
+| SAR/PKR | 74.10 |
+
+### Values stored by the scraper
+
+| Pair | Stored | Divergence |
+|---|---|---|
+| USD/PKR | 277.859092 | 0.00% |
+| EUR/PKR | 316.179403 | 0.00% |
+| GBP/PKR | 369.539174 | 0.00% |
+| AED/PKR | 75.659385 | 0.00% |
+| SAR/PKR | 74.095758 | 0.00% |
+
+All 5 within 1% (exact match). **PASS.** A fresh run (today's date-partition cleared
+first, to separate "already inserted" from a real failure) returned
+`ScrapeStatus.SUCCESS`, 13/13 rows inserted, 0 failed — covering all 13
+`ERAPI_STORE_QUOTES` pairs (USD, EUR, GBP, JPY, CHF, CNY, SAR, AED, KWT, QAR, OMR,
+INR, CNH), not only the 5 checked here.
+
+### Gotcha for future debugging
+
+`INSERT OR IGNORE` on `(rate_date, quote_currency)` means re-running the scraper on
+a day already fetched reports `rows_inserted=0` — that is deduplication working, NOT
+a failure. Verifying "does this scraper still work" must clear or check the
+day-partition first, or a healthy scraper looks PARTIAL/failed by row count alone.
+
+### Provenance
+
+`pkr_forex` stores `source` (the API URL) and `fetched_at` per row, so every rate is
+traceable to its endpoint and fetch time. It is a lighter provenance than
+`record_observation()`'s (no raw source_snippet of the exact API field) — acceptable
+for a machine-readable JSON API where the URL alone reproduces the value, unlike an
+HTML/PDF page where the snippet proves what was actually read.
+
+---
+
+## Priorities 3, 6-11
 
 Pending verification. Entries added as each is completed. All will be routed
 through `record_observation()` so every value is verifiable.

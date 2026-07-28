@@ -23,7 +23,11 @@ class SBPPakistanForexScraper(BaseExchangeScraper):
     label = "Forex rates"
     category = "macro"
     default_freshness_hours = 24
-    target_success_rate = 0.0   # set from the live suite (Task 2.4)
+    # Verified 2026-07-28 (docs/scraper_verification.md Priority 5): 13/13 pairs
+    # inserted, 5 spot-checked against the live API by hand, exact match (0.00%
+    # divergence). ExchangeRate-API has no documented downtime history here, so the
+    # target is set high; a real drop below this should be investigated, not ignored.
+    target_success_rate = 0.95
     region_id  = REGION
 
     def fetch(self) -> ScrapeResult:
