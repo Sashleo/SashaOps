@@ -247,7 +247,65 @@ HTML/PDF page where the snippet proves what was actually read.
 
 ---
 
-## Priorities 3, 6-11
+## Priority 6 - FBR tax revenue (`fbr_revenue`)
+
+**Status: PASSED (rewritten - the previous implementation could never have worked)**
+**Date verified:** 2026-07-28
+**Source URL:** `https://www.fbr.gov.pk/revenue-collections/142253/131355`, PDF:
+`https://download1.fbr.gov.pk/Docs/20261151114844602MONTHWISE-TAXWISENETCOLLECTIONDURINGFY2024-25.pdf`
+**Method used:** `pdf`
+
+### What was actually wrong (Step D of the protocol)
+
+The previous scraper scraped `fbr.gov.pk/Newsroom/` for a number near keywords like
+"revenue collection". Inspecting the page live: it is a **news/navigation homepage**
+(press releases, menu links) with **no tax-collection figures anywhere in its text**
+- confirmed by dumping the full extracted text. The keyword-proximity approach could
+never have succeeded against this page; it was scraping the wrong page entirely.
+
+Followed the source to its real location: Newsroom -> "Dte Gen of Revenue Analysis"
+-> "Revenue Collections" -> a list of PDFs, one per fiscal year, titled "MONTH WISE /
+TAX WISE NET COLLECTION DURING FY <year>", listed newest-first. Rewrote the scraper
+to fetch that listing, download the first (latest) PDF, and read its table directly.
+
+### Values seen on source (ground truth, read by hand from the PDF before running the scraper)
+
+```
+MONTH WISE / TAX WISE NET COLLECTION DURING FY: 2024-25   (Rs. in Billion)
+...
+JUNE   890.9  397.9  93.7  127.9  1,510.4
+...
+Total  5,791.7  3,901.4  766.6  1,284.6  11,744.3
+```
+Latest reported month: **June, Rs 1,510.4bn**. FY2024-25 total: **Rs 11,744.3bn**.
+(No FY2025-26 PDF exists on the live source yet, so June FY24-25 genuinely is the
+latest published figure - the scraper is not stale, the source has not updated.)
+
+### Value stored by the scraper
+
+`fbr_revenue(tax_type='total', period='FY2024-25-June', collected_pkr_bn=1510.4)`
+`fbr_revenue(tax_type='total', period='FY2024-25', collected_pkr_bn=11744.3)`
+Both exact matches. Divergence 0.00%. **PASS.** `ScrapeStatus.SUCCESS`, 2 rows.
+
+### Gotcha for future debugging
+
+FBR occasionally omits the FY dash format (`2024-25` vs `2024-2025`) between years;
+`_FY_TITLE` accepts 2-4 digit second years. The PDF table sometimes right-pads a
+"Total" row differently across years - `_last_number()` always takes the rightmost
+numeric column rather than a fixed index, so a format tweak in one year's PDF
+(observed across the 2003-04 through 2024-25 archive) does not silently misalign.
+
+### Provenance
+
+Routed through `record_observation()` for the monthly figure (`source_url` = the
+exact PDF, `source_snippet` = the matched table row) plus the existing
+`fbr_revenue`/`pk_macro` tables for the app's normal read path — same dual-write
+pattern as Priority 4 (SBP). Sanity band `fbr_tax_collection_monthly_bn: (50, 5000)`
+added to `SANITY_BOUNDS`.
+
+---
+
+## Priorities 3, 7-11
 
 Pending verification. Entries added as each is completed. All will be routed
 through `record_observation()` so every value is verifiable.

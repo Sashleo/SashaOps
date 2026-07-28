@@ -45,6 +45,10 @@ SANITY_BOUNDS = {
     "fx_sar_pkr":      (20.0, 200.0),
     "cpi_yoy":         (-5.0, 40.0),
     "gdp_growth":      (-10.0, 15.0),
+    # FBR monthly net collection has run roughly Rs 400bn-1,600bn/month in recent
+    # fiscal years (verified 2026-07-28: June FY24-25 = 1,510.4bn); banded generously
+    # to survive nominal growth without masking a genuine parse error.
+    "fbr_tax_collection_monthly_bn": (50.0, 5000.0),
 }
 
 
