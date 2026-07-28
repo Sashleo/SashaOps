@@ -305,7 +305,48 @@ added to `SANITY_BOUNDS`.
 
 ---
 
-## Priorities 3, 7-11
+## Priority 7 - OGRA petroleum prices (`ogra_prices`)
+
+**Status: BLOCKED (root cause found; fix requires a resource decision, not skipped)**
+**Date investigated:** 2026-07-28
+**Source URL:** `https://www.ogra.org.pk/notified-petroleum-prices`
+
+### What was found (Steps A/D of the protocol)
+
+The page returns 200 and 265KB of HTML, but a raw-text search for "HSD"/"high speed
+diesel"/"petrol" (excluding nav-menu links) finds **nothing** - no PDF link, no
+`wp-json`/`/api/`/GraphQL hint, no embedded JSON, no iframe. The current scraper's
+own comment ("detail price pages are JS-rendered") is correct: OGRA's price table is
+rendered client-side after page load, so `requests` + BeautifulSoup can never see it
+- confirmed, not assumed, by inspecting the actual response bytes.
+
+Per the plan's remediation step 4, the correct fix is Playwright (already a listed
+dependency) to render the page and read the DOM after JS executes. Attempting this
+found `BrowserType.launch: Executable doesn't exist` - the Chromium binary is not
+installed in the currently running container image.
+
+### Why this is not simply fixed here
+
+Installing the Playwright browser (`playwright install chromium`, ~300-500MB) writes
+into the Docker Desktop WSL2 vdisk. Checked before proceeding:
+`docker_data.vhdx` is already **47.9 GB**, and the **host C: drive has only ~6.8 GB
+free** ([[disk_space_constraint]] in project memory: a prior full-disk event caused
+ext4 corruption on this machine requiring fsck recovery). Growing the vdisk by
+several hundred MB to a few GB (Chromium plus its dependencies) is a real risk on a
+drive this close to full, so it was not done without confirming first.
+
+### Status
+
+Left **BLOCKED, not silently skipped or falsely marked PASSED**. Options once
+resource headroom is confirmed: (a) install Playwright's Chromium and render this
+one page, (b) free host disk space first, (c) find a lighter JS-rendering path
+(a headless fetch of the page's XHR endpoint once located via authenticated devtools
+inspection, avoiding a full browser install). Continuing to Priority 8 in the
+meantime so overall progress is not blocked by this one scraper.
+
+---
+
+## Priorities 3, 8-11
 
 Pending verification. Entries added as each is completed. All will be routed
 through `record_observation()` so every value is verifiable.
