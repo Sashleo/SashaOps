@@ -28,8 +28,9 @@ env/
 sashaops_app/.tmp/
 sashaops_app/reports/generated/
 
-# ── Tests & test config (excluded from published repo) ──
-sashaops_app/tests/
+# ── Test config (excluded from published repo) ──
+# Tests themselves ARE tracked: they enforce the accuracy guarantees on every clone
+# and CI run, and Task 2.4 requires a committed scraper test battery.
 pytest.ini
 sashaops_app/pytest.ini
 pyproject.toml
