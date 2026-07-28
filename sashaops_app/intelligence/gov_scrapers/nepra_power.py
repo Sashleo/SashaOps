@@ -1,109 +1,80 @@
 """
-gov_scrapers/nepra_power.py — NEPRA electricity tariffs and power sector data.
+gov_scrapers/nepra_power.py — NEPRA tariff determinations.
 
-Tries tariff determination pages, press releases, and notifications.
-NLP extraction captures tariff changes and capacity announcements.
+Verified 2026-07-28 (docs/scraper_verification.md Priority 8): the previous version
+targeted `www.nepra.org.pk`, which is 301-redirected and had been reported 403 in an
+earlier check. The bare domain `nepra.org.pk` (no www) resolves cleanly (200) and its
+homepage lists recent tariff determinations in a table, newest first, each row
+carrying a date and a link to the determination PDF (e.g. "TRF-623 Decision Aerem
+Energy ... 17-07-2026 ...pdf"). The plan's Priority 8 target is exactly this: the
+latest tariff determination's date and reference — not a single numeric rate, which
+NEPRA does not publish on the homepage (rates vary by DISCO/consumer class and are
+set out inside each determination PDF, not summarised as one figure).
 """
 
 from __future__ import annotations
 
-from datetime import date
+import re
 from typing import Optional
 
 from intelligence.gov_scrapers.base import BasePakGovScraper
 from database.macro_data import upsert_nepra
 
-_PAGES = [
-    # NEPRA returns 403 Forbidden on all pages as of June 2026 (IP-level block).
-    # Kept for when access is restored; scraper will fall through to regulatory_text fallback.
-    "https://www.nepra.org.pk/tariff/Tariff.php",
-    "https://www.nepra.org.pk/tariff/",
-    "https://www.nepra.org.pk/",
-    "https://www.nepra.org.pk/power-sector-statistics/",
-]
-
-_PRESS_PAGES = [
-    "https://www.nepra.org.pk/news-events/",
-    "https://www.nepra.org.pk/publications/",
-]
-
-_KEYWORDS = [
-    "industrial tariff", "industrial", "tariff", "rs.", "pkr",
-    "per unit", "per kwh", "installed capacity", "total capacity",
-    "generation capacity", "mw", "gw",
-]
-
-_DOMAIN_KEYWORDS = [
-    "electricity tariff", "tariff determination", "industrial tariff",
-    "installed capacity", "generation capacity", "power sector",
-    "distribution company", "disco", "national grid", "nepra",
-    "load shedding", "circular debt", "capacity payment", "fuel adjustment",
-    "variable charge", "fixed charge", "consumer tariff",
-]
+_HOME = "https://nepra.org.pk/"
+_DATE_RE = re.compile(r"\b(\d{2}-\d{2}-\d{4})\b")
+_REF_RE = re.compile(r"(TRF|LAD|LAT|NCM|GCA|PAR)-[\w\-]+", re.I)
 
 
 class NEPRAPowerScraper(BasePakGovScraper):
     scraper_id = "nepra_power"
-    label = "NEPRA power tariffs"
+    label = "NEPRA tariff determinations"
     category = "regulator"
-    default_freshness_hours = 720
-    target_success_rate = 0.0   # set from the live suite (Task 2.4)
+    default_freshness_hours = 168   # determinations post several times a week
+    # Verified 2026-07-28: latest determination row matched exactly (TRF-623, Aerem
+    # Energy, 17-07-2026). The homepage listing is the site's primary content, so a
+    # high target is reasonable; a real drop likely means the site changed layout.
+    target_success_rate = 0.9
+    source_url = _HOME
 
     def scrape(self) -> Optional[dict]:
-        out: dict = {}
-        all_text = ""
+        soup = self.get_soup(_HOME)
+        if not soup:
+            return None
 
-        for url in _PAGES:
-            soup = self.get_soup(url)
-            if not soup:
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if "tariff/Tariff/" not in href or not href.lower().endswith(".pdf"):
                 continue
-            text = soup.get_text(" ", strip=True)
-            all_text += " " + text
-
-            tariff   = self.number_near(text, "industrial tariff", "industrial", "tariff", window=80)
-            capacity = self.number_near(text, "installed capacity", "total capacity",
-                                        "generation capacity", window=90)
-            if tariff and 5 < tariff < 100:
-                out["tariff_industrial"] = tariff
-            if capacity and capacity > 1000:
-                out["capacity_total"] = capacity
-            if out:
-                break
-
-        if not out:
-            for press_url in _PRESS_PAGES:
-                press_text = self.get_press_release_text(press_url, max_releases=3)
-                if press_text:
-                    all_text += " " + press_text
-                    tariff = self.number_near(
-                        press_text, "tariff", "per unit", "per kwh", "rs.", window=100
-                    )
-                    capacity = self.number_near(
-                        press_text, "installed capacity", "total capacity", "mw", window=100
-                    )
-                    if tariff and 5 < tariff < 100:
-                        out["tariff_industrial"] = tariff
-                    if capacity and capacity > 1000:
-                        out["capacity_total"] = capacity
-                    if out:
-                        break
-
-        if all_text.strip():
-            nlp = self.nlp_extract(all_text, _DOMAIN_KEYWORDS)
-            if nlp.get("regulatory_text"):
-                out["regulatory_text"] = nlp["regulatory_text"]
-            if nlp.get("nlp_entities"):
-                out["nlp_entities"] = nlp["nlp_entities"]
-
-        return out if out else None
+            tr = a.find_parent("tr")
+            if not tr:
+                continue
+            row_text = tr.get_text(" ", strip=True)
+            date_m = _DATE_RE.search(row_text)
+            if not date_m:
+                continue
+            ref_m = _REF_RE.search(row_text) or _REF_RE.search(href)
+            # Rows are listed newest-first; the FIRST tariff-determination row with a
+            # date wins.
+            return {
+                "determination_date": date_m.group(1),
+                "reference": ref_m.group(0) if ref_m else None,
+                "title": row_text[:200],
+                "_source_url": _HOME,
+                "_pdf_url": href,
+            }
+        return None
 
     def persist(self, data: dict) -> int:
-        n = 0
-        period = date.today().strftime("%Y-%m")
-        if "tariff_industrial" in data:
-            upsert_nepra("tariff_industrial", period, data["tariff_industrial"], "PKR/kWh")
-            n += 1
-        if "capacity_total" in data:
-            upsert_nepra("capacity_total", period, data["capacity_total"], "MW")
-            n += 1
-        return n
+        if not data.get("determination_date"):
+            return 0
+        period = data["determination_date"]
+        # This is a date+reference, not a scalar rate, so it does not fit
+        # record_observation() (which requires a numeric value and refuses to store
+        # None — by design, so a text finding is never mistaken for a missing
+        # number). nepra_power carries the reference in `unit` and the row's own
+        # source_url (self.source_url, logged by BasePakGovScraper.fetch()) plus
+        # ScrapeResult.artifacts (set below via the caller) give the same
+        # verifiability: which page, which row, when.
+        upsert_nepra("latest_tariff_determination", period, None,
+                    data.get("reference") or "")
+        return 1

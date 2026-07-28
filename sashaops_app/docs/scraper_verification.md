@@ -346,7 +346,62 @@ meantime so overall progress is not blocked by this one scraper.
 
 ---
 
-## Priorities 3, 8-11
+## Priority 8 - NEPRA tariff determinations (`nepra_power`)
+
+**Status: PASSED (rewritten)**
+**Date verified:** 2026-07-28
+**Source URL:** `https://nepra.org.pk/` (no `www` — the `www.` host 301-redirects here
+and had separately been reported 403 in an earlier check)
+**Method used:** `html_bs4`
+
+### What was actually wrong
+
+The previous scraper targeted `www.nepra.org.pk` pages that were reportedly 403-
+blocked, and searched for a single numeric "industrial tariff" figure. Checked live:
+`nepra.org.pk` (bare domain) returns 200 and its homepage IS reachable and current
+(determinations dated up to the day of verification). NEPRA does not publish one
+headline rate on its homepage — tariffs vary by DISCO and consumer class and are set
+out inside each determination PDF — so the plan's actual Priority 8 target ("latest
+determination date and reference") was achievable directly from the homepage's
+determinations table, which lists entries newest-first with a date and a PDF link
+per row.
+
+### Values seen on source (ground truth, read by hand before running the scraper)
+
+First (most recent) row in the determinations table:
+```
+17-07-2026 | Decision of the Authority in the matter of Application filed by
+Aerem Energy (Private) Limited for approval of tariff upto AC 240 MW Site
+Neutral Hybrid Project at K-Electric Dhab...
+-> tariff/Tariff/TRF-623 Decision Aerem Energy 17-07-2026 12993-13103.pdf
+```
+Latest determination: **date 17-07-2026, reference TRF-623**.
+
+### Value stored by the scraper
+
+`nepra_power(metric='latest_tariff_determination', period='17-07-2026', unit='TRF-623')`.
+Exact match on both date and reference. **PASS.** `ScrapeStatus.SUCCESS`, 1 row.
+
+### Gotcha for future debugging
+
+The homepage also lists **Admission Notices** (e.g. a scanned `.jpeg`) ahead of and
+interleaved with tariff determinations in page order - matching on "first `view`
+link" (as an earlier probe did) picks up a notice, not a determination. The fix is
+to require the link path contain `tariff/Tariff/` AND end in `.pdf`, and to read the
+date/reference from that link's own `<tr>`, not page order alone.
+
+### Provenance
+
+This finding is a date + reference, not a scalar rate, so it does not fit
+`record_observation()` (which requires a numeric value and refuses to store `None` -
+by design, so a text finding is never mistaken for a missing number). Verifiability
+comes instead from `nepra_power.unit` (the reference) plus `ScrapeResult.artifacts`
+(the full row text, PDF URL, and homepage URL — logged by `BasePakGovScraper.fetch()`
+via `r.artifacts = {"data": data}`).
+
+---
+
+## Priorities 3, 9-11
 
 Pending verification. Entries added as each is completed. All will be routed
 through `record_observation()` so every value is verifiable.
