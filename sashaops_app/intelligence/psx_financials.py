@@ -112,6 +112,24 @@ def _report_is_sane(report: dict) -> bool:
     return True
 
 
+def _report_is_reliable(report: dict) -> bool:
+    """
+    Whether an annual-report parse is trustworthy enough to feed real analysis.
+
+    A DIGITAL report (real text layer) is protected by the parser's anchoring, sign
+    and plausibility guards, so it is trusted. An OCR/scanned report is NOT: OCR
+    routinely misreads digits and returns internally impossible figures (a scanned
+    LUCK booklet parsed net income above revenue). An OCR report is therefore trusted
+    ONLY when its balance sheet independently RECONCILES (Assets == Liabilities +
+    Equity within 1%) - an arithmetic cross-check that near-random OCR errors cannot
+    pass by chance. Otherwise we prefer a missing field ("Required: X") over a wrong
+    one, per the accuracy-first rule.
+    """
+    if not report.get("_ocr"):
+        return True
+    return report.get("_balance_ok") is True
+
+
 def _build_doc_financials(table: dict) -> dict:
     """Map a PSX financial table {metric:{period:value}} → analyse_from_document dict."""
     out: dict = {}
@@ -304,14 +322,16 @@ def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
         return None
 
     # ── Deepen with the annual-report PDF ────────────────────────────────────
-    # The PSX summary lacks balance-sheet items (assets, equity, debt, current
-    # assets/liabilities) needed for liquidity, leverage, Altman Z and ROE — the
-    # annual report has them. Two adoption paths:
-    #   • WHOLESALE: report is a complete, internally-consistent statement → use it.
-    #   • MERGE: report is partial but its revenue matches the summary's order of
-    #     magnitude (same unit convention) → fill only the balance-sheet fields the
-    #     summary is missing. This is what lets ROE / current ratio / Altman compute
-    #     for companies whose report doesn't parse into a "complete" statement.
+    # The PSX summary (structured HTML tables, not OCR) is the AUTHORITATIVE source
+    # for income-statement items and is already in `doc`. The summary lacks
+    # balance-sheet items (assets, equity, debt, current assets/liabilities) needed
+    # for liquidity, leverage, Altman Z and ROE - the annual report has them. The
+    # report is used only to FILL those gaps, and only when it is RELIABLE
+    # (_report_is_reliable): a digital report, or an OCR report whose balance sheet
+    # reconciles. An unreliable OCR parse is discarded so its misread digits never
+    # reach an analysis - the field stays missing and surfaces as "Required: X".
+    #   • WHOLESALE: a reliable, complete statement replaces the summary outright.
+    #   • MERGE: a reliable partial report fills only the missing balance-sheet fields.
     source = "psx_summary"
     summary_fy = doc.get("_fiscal_year")
     _BS_FIELDS = ("total_assets", "shareholders_equity", "total_debt", "cash",
@@ -325,18 +345,24 @@ def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
             if "ebitda" not in report and report.get("ebit") and report.get("depreciation"):
                 report["ebitda"] = report["ebit"] + report["depreciation"]
 
-            if _report_is_sane(report):
-                # Complete statement — adopt wholesale.
+            if not _report_is_reliable(report):
+                # Scanned/OCR report that did not reconcile: do NOT let its values into
+                # the analysis. Keep the clean summary; balance-sheet gaps stay missing.
+                source = "psx_summary(report_rejected_unreliable_ocr)"
+                log.info("Annual report rejected as unreliable OCR - summary kept",
+                         ticker=ticker, balance_ok=report.get("_balance_ok"))
+            elif _report_is_sane(report):
+                # Reliable, complete statement — adopt wholesale.
                 if not report.get("_fiscal_year") and summary_fy:
                     report["_fiscal_year"] = summary_fy
                 doc = report
                 source = "psx_annual_report_ocr" if report.get("_ocr") else "psx_annual_report"
             else:
-                # Partial report — merge balance-sheet fields if units are consistent
-                # with the summary (report revenue within 0.5×–2× of summary revenue).
-                # Unit-align the report to the summary. PSX summary is in PKR '000;
-                # annual reports may be in '000 or actual PKR. Infer the scale from
-                # the revenue ratio and snap to the nearest power of 1000.
+                # Reliable but partial report — merge balance-sheet fields if units are
+                # consistent with the summary (report revenue within 0.5x-2x of summary
+                # revenue). PSX summary is in PKR '000; annual reports may be in '000 or
+                # actual PKR. Infer the scale from the revenue ratio and snap to the
+                # nearest power of 1000.
                 s_rev = doc.get("revenue")
                 r_rev_chk = report.get("revenue")
                 scale, units_ok = 1.0, True
