@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import threading
 from datetime import date
@@ -208,6 +209,27 @@ def _schedule_background_ocr(ticker: str, pdf_bytes: bytes, url: str) -> None:
 
     def _worker():
         try:
+            # Optional: a DIGITAL full annual report from the company's own site, which
+            # parses far more accurately than OCR of a PSX scan. Gated behind
+            # IR_ANNUAL_REPORT because open-web PDF discovery is currently blocked by
+            # search-engine anti-bot measures (DDG 202, Bing redirect obfuscation) and
+            # the profile scraper does not yet yield company site URLs. Left dormant,
+            # ready to switch on once a reliable source (site registry or search API)
+            # exists, so it is not dead weight nor a futile per-report web call.
+            if os.environ.get("IR_ANNUAL_REPORT") == "true":
+                try:
+                    from intelligence.annual_report_finder import find_annual_report_financials
+                    from intelligence.psx_company_profile import get_psx_company_profile
+                    name = (get_psx_company_profile(ticker) or {}).get("company_name")
+                    ir = find_annual_report_financials(ticker, name)
+                    if ir:
+                        _save_cache(ticker, ir)
+                        log.info("Background: digital annual report used instead of OCR",
+                                 ticker=ticker, url=ir.get("_source_url", "")[:90])
+                        return
+                except Exception as e:
+                    log.info("IR annual-report fallback skipped", ticker=ticker, error=str(e)[:80])
+
             from intelligence.pdf_extractor import extract_financials
             res    = extract_financials(pdf_bytes, ocr=True)
             doc    = res.get("financials") or {}
