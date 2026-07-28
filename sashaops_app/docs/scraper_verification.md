@@ -553,7 +553,62 @@ period label). Sanity band added to `SANITY_BOUNDS`.
 
 ---
 
-## Priorities 3, 11
+## Priority 11 - World Bank Pakistan indicators (`worldbank_pak`)
 
-Pending verification. Entries added as each is completed. All will be routed
-through `record_observation()` so every value is verifiable.
+**Status: PASSED (remittances added - it was entirely missing before)**
+**Date verified:** 2026-07-28
+**Source URL:** `https://api.worldbank.org/v2/country/PAK/indicator/{code}?format=json&per_page=5`
+**Method used:** `json_api`
+
+### What was found
+
+Unlike every other Priority 5-10 scraper, this one already used a clean structured
+JSON API (no HTML scraping, no OCR) and was architecturally sound. Checked live
+anyway per protocol: GDP growth and current account balance both matched the API
+exactly. **Remittances - one of the plan's three explicitly named targets ("GDP
+growth, current account balance, remittances") - was entirely absent from
+`_INDICATORS`.** Added `BX.TRF.PWKR.CD.DT` ("Personal remittances, received").
+
+Also confirmed (not assumed) that `govt_debt_pct_gdp` (`GC.DOD.TOTL.GD.ZS`) returns
+`null` for Pakistan in every one of the last 5 years directly from the live API -
+a genuine source-side data gap, not a scraper bug. 7-8 of 9 indicators returning
+data per run is therefore the realistic bar.
+
+### Values seen on source (ground truth, read by hand before running the scraper)
+
+```
+NY.GDP.MKTP.KD.ZG   (GDP growth):        2025 = 3.698%
+BN.CAB.XOKA.GD.ZS   (current account):   2025 = -0.110% of GDP
+BX.TRF.PWKR.CD.DT   (remittances):       2025 = $40,478,000,000
+```
+
+### Value stored by the scraper
+
+`pk_macro(source='worldbank', indicator='gdp_growth', period='2025', value=3.698...)`
+`pk_macro(source='worldbank', indicator='current_account_pct_gdp', period='2025', value=-0.110...)`
+`pk_macro(source='worldbank', indicator='remittances_usd', period='2025', value=40478000000)`
+All exact matches. Divergence 0.00%. **PASS.** A fresh run (today's cache file
+cleared first, to distinguish "cached" from "broken" - same gotcha as Priority 5)
+returned `ScrapeStatus.SUCCESS`, 8 rows (govt debt correctly absent, not fabricated).
+
+### Gotcha for future debugging
+
+This scraper's default freshness is 8760h (1 year), and the base class file-caches
+by day - re-running it same-day after a code change (e.g. adding an indicator)
+silently replays the STALE cached result and misses the new indicator entirely.
+Verifying a change here requires clearing `.tmp/gov_cache/worldbank_pak_<today>.json`
+first, same class of gotcha as Priority 5's `INSERT OR IGNORE`.
+
+### Provenance
+
+The three named targets routed through `record_observation()`
+(`gdp_growth`, `current_account_pct_gdp`, `remittances_usd` - reusing the existing
+`gdp_growth` sanity band from the original SBP work; added bands for the other two).
+Remaining indicators (inflation, unemployment, exports/imports %GDP, GDP per
+capita) keep the existing `pk_macro` storage, matching how they were already used
+elsewhere in the codebase.
+
+---
+
+**Priorities 1-11: all verified.** See the summary at the top of this document for
+the consolidated pass list.

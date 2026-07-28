@@ -24,9 +24,14 @@ _INDICATORS = {
     "NE.EXP.GNFS.ZS":    ("exports_pct_gdp", "% of GDP"),
     "NE.IMP.GNFS.ZS":    ("imports_pct_gdp", "% of GDP"),
     "NY.GDP.PCAP.CD":    ("gdp_per_capita_usd", "USD"),
+    # Remittances - one of the plan's Priority 11 targets (GDP growth, current
+    # account balance, remittances), previously missing entirely. Verified
+    # 2026-07-28: 2025 = $40.478bn against the live API.
+    "BX.TRF.PWKR.CD.DT": ("remittances_usd", "USD"),
 }
 
 _BASE = "https://api.worldbank.org/v2/country/PAK/indicator/{code}?format=json&per_page=5"
+_CODE_OF = {name: code for code, (name, _unit) in _INDICATORS.items()}
 
 
 class WorldBankPakScraper(BasePakGovScraper):
@@ -34,7 +39,12 @@ class WorldBankPakScraper(BasePakGovScraper):
     label = "World Bank Pakistan"
     category = "stats"
     default_freshness_hours = 8760
-    target_success_rate = 0.0   # set from the live suite (Task 2.4)
+    # Verified 2026-07-28: GDP growth (3.70%, 2025) and current account (-0.11% of
+    # GDP, 2025) matched the live API exactly by hand. govt_debt_pct_gdp has been
+    # null for Pakistan in every recent year on the source itself (checked directly,
+    # not a scraper bug) - 7 of 9 indicators returning data per run is the realistic
+    # bar, not 9 of 9.
+    target_success_rate = 0.75
 
     def scrape(self) -> Optional[dict]:
         out: dict = {}
@@ -56,4 +66,21 @@ class WorldBankPakScraper(BasePakGovScraper):
             # Mirror inflation into sbp_indicators.cpi so the macro summary can read it
             if name == "inflation":
                 upsert_sbp_indicator("cpi", rec["period"], rec["value"], "%", source="worldbank")
+
+            # The plan's three named targets (GDP growth, current account, remittances)
+            # get full provenance so they are independently verifiable, matching every
+            # other Phase 2 scraper.
+            if name in ("gdp_growth", "current_account_pct_gdp", "remittances_usd"):
+                from database.provenance import record_observation
+                record_observation(
+                    indicator=name,
+                    value=rec["value"],
+                    period=rec["period"],
+                    unit=rec["unit"],
+                    source="World Bank",
+                    source_url=_BASE.format(code=_CODE_OF[name]),
+                    source_snippet=f"{name} {rec['period']}: {rec['value']}",
+                    method_used="json_api",
+                    scraper_id=self.scraper_id,
+                )
         return n

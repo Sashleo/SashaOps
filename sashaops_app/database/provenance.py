@@ -57,6 +57,12 @@ SANITY_BOUNDS = {
     # PTA total mobile cellular subscribers, millions. Verified 2026-07-28: June
     # 2026 = 208.06 million. Banded around Pakistan's population scale.
     "pta_mobile_subscribers_million": (50.0, 300.0),
+    # World Bank current account and remittances. Verified 2026-07-28: current
+    # account -0.11% of GDP (2025), remittances $40.478bn (2025). Banded generously
+    # (Pakistan's current account has swung from -3.5% to +0.1% in recent years;
+    # remittances have grown steadily) without masking a genuine parse error.
+    "current_account_pct_gdp": (-15.0, 10.0),
+    "remittances_usd":         (1e9, 1e11),
 }
 
 
