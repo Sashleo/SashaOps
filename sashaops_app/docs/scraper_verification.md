@@ -446,7 +446,64 @@ via `r.artifacts = {"data": data}`).
 
 ---
 
-## Priorities 3, 9-11
+## Priority 9 - PBS: LSM/QIM index + CPI inflation (`pbs_lsmi`)
+
+**Status: PASSED (rewritten; CPI extraction added - it did not exist before)**
+**Date verified:** 2026-07-28
+**Source URLs:** `https://www.pbs.gov.pk/industry-2/` (LSM), `https://www.pbs.gov.pk/?page_id=11078` (CPI)
+**Method used:** LSM `xlsx`, CPI `pdf`
+
+### What was actually wrong
+
+The previous scraper searched on-page HTML text for a growth number near "LSM"/
+"QIM" keywords - the real figures are only in downloadable monthly Excel releases
+("Table 1 <Month>-<Year>.xlsx"), never in page text, so this could not reliably
+find them. More importantly: **there was no CPI extraction at all**, despite
+`database/macro_data.py`'s `get_macro_summary_text()` already calling
+`get_sbp_indicator("cpi")` and expecting a value - a real, previously invisible gap
+where the macro summary silently showed no inflation figure.
+
+Both real feeds list several months of past releases NOT reliably sorted by date in
+the DOM (confirmed by inspection), so "take the first link" is unsafe. The rewrite
+parses month/year out of each candidate's title/href and selects the maximum by
+date, for both series independently.
+
+### Values seen on source (ground truth, read by hand before running the scraper)
+
+QIM Excel table (`Table-1-May-2026.xlsx`), the "QIM" summary row:
+```
+QIM  weight=78.37  index(May-26)=116.098  %Chg(May-26 vs Apr-26)=+1.21  %Chg(May-26 vs May-25)=-0.98
+```
+CPI press release (`Press-Release-June-2026.pdf`), headline table:
+```
+Inflation Rate, June, 2026 over June, 2025 (Year on Year)   11.07
+```
+**LSM/QIM index: 116.10 (May 2026), YoY -0.98%. CPI: 11.07% YoY (June 2026).**
+
+### Value stored by the scraper
+
+`pbs_lsmi(sector='overall', period='2026-05', index_value=116.1, yoy_change_pct=-0.98)`
+`sbp_indicators(indicator='cpi', period='2026-06', value=11.07, source='PBS')`
+Both exact matches. Divergence 0.00%. **PASS.** `ScrapeStatus.SUCCESS`, 2 rows.
+
+### Gotcha for future debugging
+
+PBS's own upload has a typo in at least one filename: `Press-Release-Febuary-2026.pdf`
+(missing the first "r" in February). `_MONTH_YEAR_RE` matches "febuary" explicitly
+so that month's release is not silently skipped. Both listing pages mix release
+months out of chronological DOM order - selection must parse and compare dates, not
+trust position on the page.
+
+### Provenance
+
+CPI routed through `record_observation()` (`cpi_yoy`, already in `SANITY_BOUNDS`
+from Phase 2's original SBP work). LSM stored via the existing `pbs_lsmi`/`pk_macro`
+tables (a level + YoY series is not a single scalar "value" in the same shape
+`record_observation` expects, matching the NEPRA precedent at Priority 8).
+
+---
+
+## Priorities 3, 10-11
 
 Pending verification. Entries added as each is completed. All will be routed
 through `record_observation()` so every value is verifiable.
