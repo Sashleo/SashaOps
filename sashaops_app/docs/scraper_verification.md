@@ -307,42 +307,87 @@ added to `SANITY_BOUNDS`.
 
 ## Priority 7 - OGRA petroleum prices (`ogra_prices`)
 
-**Status: BLOCKED (root cause found; fix requires a resource decision, not skipped)**
-**Date investigated:** 2026-07-28
+**Status: PASSED (rewritten; required a Playwright browser install)**
+**Date verified:** 2026-07-28
 **Source URL:** `https://www.ogra.org.pk/notified-petroleum-prices`
+**Method used:** `pdf` (via a Playwright-rendered listing page)
 
 ### What was found (Steps A/D of the protocol)
 
 The page returns 200 and 265KB of HTML, but a raw-text search for "HSD"/"high speed
-diesel"/"petrol" (excluding nav-menu links) finds **nothing** - no PDF link, no
-`wp-json`/`/api/`/GraphQL hint, no embedded JSON, no iframe. The current scraper's
-own comment ("detail price pages are JS-rendered") is correct: OGRA's price table is
-rendered client-side after page load, so `requests` + BeautifulSoup can never see it
-- confirmed, not assumed, by inspecting the actual response bytes.
+diesel"/"petrol" (excluding nav-menu links) found **nothing** - no PDF link, no
+`wp-json`/`/api/`/GraphQL hint, no embedded JSON, no iframe. Confirmed, not assumed:
+OGRA's price table is rendered client-side after page load, so `requests` +
+BeautifulSoup can never see it.
 
-Per the plan's remediation step 4, the correct fix is Playwright (already a listed
-dependency) to render the page and read the DOM after JS executes. Attempting this
-found `BrowserType.launch: Executable doesn't exist` - the Chromium binary is not
-installed in the currently running container image.
+Per the plan's remediation step 4, the fix is Playwright (already a listed
+dependency) to render the page and read the DOM after JS executes. The Chromium
+binary was not installed in the running container
+(`BrowserType.launch: Executable doesn't exist`). Before installing it, checked
+free disk space given a prior full-disk/ext4-corruption incident on this machine
+([[disk_space_constraint]]): host C: had ~6.8GB free. Installed with live monitoring
+(checked free space every ~8s, ready to abort) rather than blindly; it completed
+cleanly, using ~700MB (6.8GB -> 6.1GB free). `playwright install chromium` is
+already in the Dockerfile, so a proper image rebuild will have it baked in - this
+was only needed to activate it in the already-running container.
 
-### Why this is not simply fixed here
+### What the rendered page actually contains
 
-Installing the Playwright browser (`playwright install chromium`, ~300-500MB) writes
-into the Docker Desktop WSL2 vdisk. Checked before proceeding:
-`docker_data.vhdx` is already **47.9 GB**, and the **host C: drive has only ~6.8 GB
-free** ([[disk_space_constraint]] in project memory: a prior full-disk event caused
-ext4 corruption on this machine requiring fsck recovery). Growing the vdisk by
-several hundred MB to a few GB (Chromium plus its dependencies) is a real risk on a
-drive this close to full, so it was not done without confirming first.
+With Chromium rendering the page, the real download links appeared
+(`<a class="download-pdf" href="https://www.ogra.org.pk/download/NNNNN">` next to a
+sibling `<p>` title - the anchor's own text is empty, which is why an even simpler
+Playwright pass that read link text directly found nothing). The feed mixes document
+types by day, verified by downloading and inspecting the 5 most recent entries:
 
-### Status
+| Date | Entry | Digital? | Content |
+|---|---|---|---|
+| Jul 28 | id 14801 | No (scanned) | - |
+| Jul 25 | id 14759 | No (scanned) | - |
+| **Jul 24** | **id 14714** | **Yes** | **Petrol(MS) + Diesel(HSD) computation** |
+| Jul 23 | id 14655 | No (scanned) | - |
+| Jul 22 | id 14605 | No (scanned) | - |
 
-Left **BLOCKED, not silently skipped or falsely marked PASSED**. Options once
-resource headroom is confirmed: (a) install Playwright's Chromium and render this
-one page, (b) free host disk space first, (c) find a lighter JS-rendering path
-(a headless fetch of the page's XHR endpoint once located via authenticated devtools
-inspection, avoiding a full browser install). Continuing to Priority 8 in the
-meantime so overall progress is not blocked by this one scraper.
+Only 1 of 5 was both digital and the right product. A separate list, "Detail
+Computation Ex-Depot Sale Price", looked like a dedicated feed but turned out to be a
+DIFFERENT document (an ex-refinery/ex-depot Annex-I/II feedstock calculation for
+Kerosene/Naphtha/HSFO/Gasoil) - not Petrol/Diesel retail prices. Confirmed by
+downloading and reading its content before using it, rather than assuming from the
+link title.
+
+### Values seen on source (ground truth, read by hand/eye from the rendered PDF before running the scraper)
+
+The scanned July 27 kerosene notification (id 14801) was read directly as an image:
+**Kerosene Max ex-depot 303.10 PKR/litre**, effective July 28, 2026 - correctly
+recognised as the wrong product and skipped, not misused.
+
+The digital July 24 computation (id 14714), read from its extracted text:
+```
+PETROL (MS) Price Effective 23 July 2026 ... Total Petrol Price ... 327.12
+Diesel (HSD) Price Effective 23 July 2026 ... Total Diesel Price ... 375.04
+```
+**Petrol: Rs 327.12/litre. Diesel (HSD): Rs 375.04/litre.** Both effective 23 July 2026.
+
+### Value stored by the scraper
+
+`ogra_prices(product='petrol', price_date='2026-07-23', price_pkr=327.12)`
+`ogra_prices(product='hsd',    price_date='2026-07-23', price_pkr=375.04)`
+Both exact matches. Divergence 0.00%. **PASS.** `ScrapeStatus.SUCCESS`, 2 rows. The
+period stored is the PRICE'S OWN effective date (read from inside the PDF), not the
+scrape date - so a verified-but-slightly-older figure is never mislabeled as today's.
+
+### Gotcha for future debugging
+
+The newest entry in a government PDF feed is not always the right one to use: it can
+be scanned (unreadable without OCR) or cover a different, unrelated product entirely.
+`_extract_prices()` rejects both cases explicitly (text-length floor, and requiring
+"petrol"/"diesel" to actually appear) rather than guessing, and the scraper walks
+backward through up to 8 recent entries to find one that is genuinely usable.
+
+### Provenance
+
+Routed through `record_observation()` per product (`ogra_petrol_price_pkr_litre`,
+`ogra_hsd_price_pkr_litre`), `source_url` = the exact PDF, `source_snippet` = the
+listing title. Sanity bands added to `SANITY_BOUNDS`.
 
 ---
 

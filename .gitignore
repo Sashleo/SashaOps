@@ -27,6 +27,11 @@ env/
 .tmp/
 sashaops_app/.tmp/
 sashaops_app/reports/generated/
+# Playwright browser binaries (installed via `playwright install chromium`, ~550MB).
+# /app is bind-mounted onto this directory, so an install lands here, not in a
+# separate container layer - must be excluded or it bloats the repo with binaries.
+.cache/
+sashaops_app/.cache/
 
 # ── Test config (excluded from published repo) ──
 # Tests themselves ARE tracked: they enforce the accuracy guarantees on every clone

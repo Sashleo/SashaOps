@@ -49,6 +49,11 @@ SANITY_BOUNDS = {
     # fiscal years (verified 2026-07-28: June FY24-25 = 1,510.4bn); banded generously
     # to survive nominal growth without masking a genuine parse error.
     "fbr_tax_collection_monthly_bn": (50.0, 5000.0),
+    # OGRA petrol/diesel ex-depot prices, PKR/litre. Verified 2026-07-28: petrol
+    # 327.12, diesel 375.04. Banded generously for nominal price movement without
+    # masking a genuine parse error (e.g. an OCR misread digit).
+    "ogra_petrol_price_pkr_litre": (50.0, 1000.0),
+    "ogra_hsd_price_pkr_litre":    (50.0, 1000.0),
 }
 
 
