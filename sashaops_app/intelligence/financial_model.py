@@ -240,6 +240,9 @@ class FinancialAnalysis:
 # ── WACC assumptions — Pakistan (with a global fallback for foreign peers) ─────
 # Risk-free rates and equity risk premiums sourced from Damodaran data.
 # The "global" entry is the fallback used only when benchmarking foreign sector peers.
+# Portability (Task 2.8): the "pakistan" values are mirrored in
+# config/markets/pakistan.yaml (wacc:) as the value of record - update both until
+# Phase 6 wires the yaml into the loader and this dict is generated from it.
 REGIONAL_WACC_PARAMS = {
     "pakistan": {
         "risk_free_rate": 0.155,       # Pakistan 10Y govt bond

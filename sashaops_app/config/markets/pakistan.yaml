@@ -39,6 +39,22 @@ company_registry:
   name: SECP
   base_url: https://eservices.secp.gov.pk
 
+wacc:
+  # Mirrors intelligence.financial_model.REGIONAL_WACC_PARAMS["pakistan"] (Task 2.8
+  # portability audit). Duplicated there for now since nothing reads this file yet
+  # (Phase 6 wires the yaml into the loader); this is the value of record.
+  risk_free_rate: 0.155        # Pakistan 10Y govt bond
+  equity_risk_premium: 0.082   # Pakistan ERP (Damodaran)
+  default_beta: 1.1
+  default_tax_rate: 0.29       # Pakistan corporate tax
+
+market_hours:
+  # Mirrors core/scheduler.py's _is_market_hours(). PSX trading session, local time.
+  timezone: Asia/Karachi
+  open: "09:30"
+  close: "15:30"
+  trading_days: [Mon, Tue, Wed, Thu, Fri]
+
 audit_report_labels:
   positive_opinions:
     - "unqualified opinion"

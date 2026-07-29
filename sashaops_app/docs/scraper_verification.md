@@ -612,3 +612,46 @@ elsewhere in the codebase.
 
 **Priorities 1-11: all verified.** See the summary at the top of this document for
 the consolidated pass list.
+
+---
+
+## Task 2.8 - Portability audit
+
+Ran the plan's exact grep (`PSX|PKR|Pakistan|SBP|SECP|Karachi|Islamabad` across
+every `.py` file): **62 files hit.** Triaged all of them.
+
+**Moved into `config/markets/pakistan.yaml` (genuine engine-level constants,
+previously hardcoded with no config backing):**
+- `wacc:` - risk-free rate, equity risk premium, beta, tax rate. Was hardcoded in
+  `intelligence/financial_model.py`'s `REGIONAL_WACC_PARAMS["pakistan"]` - the
+  shared ratio/DCF engine, not a Pakistan-named scraper module.
+- `market_hours:` - timezone, session window, trading days. Was hardcoded in
+  `core/scheduler.py`'s `PKT` / `_is_market_hours()`.
+
+Both are left in place in Python too (nothing reads the yaml yet - Phase 6 wires
+that in) with a comment pointing at the yaml as the value of record, so the two
+copies cannot silently drift without a reviewer noticing.
+
+**Reviewed and left as-is (country-specific by current architecture, not a
+mechanical "move the value" fix):** the remaining ~55 files are the intelligence
+layer's actual Pakistan implementation - `intelligence/keyword_engine.py` (PSX
+sector-name taxonomy), `intelligence/query_templates.py` (Pakistan-specific search
+query strings), `security/sanitiser.py` (the Pakistan entity dictionary - cities,
+regulators, currency terms - used to anonymise prompts), `intelligence/news_relevance.py`,
+`intelligence/competitors.py`, `intelligence/stocks.py`, `intelligence/document_financials.py`,
+`core/narrative_fallbacks.py`, plus every file already named `psx_*`/`gov_scrapers/*`/
+`exchange_scrapers/*`. CLAUDE.md's own architecture sanctions "per-country scraper
+modules" as the intended extension point; in practice today the whole intelligence
+layer (query construction, entity redaction, sector mapping, report templates) is
+written directly against Pakistan, not templated against the yaml.
+
+**Honest scope call:** turning all of that into genuinely swappable, yaml-driven
+logic is a real pre-Phase-6 architecture change - templating dozens of search-query
+strings, externalising the sanitiser's entity dictionary, parameterising sector-regulator
+maps - not a mechanical value relocation, and not something to rush through without
+dedicated test coverage per file. Forcing it into this session risked regressions
+in working search/sanitisation/reporting logic for a checklist tick. Flagging it
+here as the accurate state of play rather than claiming a portability migration
+that has not actually happened: **Phase 2 moved the clean engine-level constants;
+the intelligence-layer templating work belongs to Phase 6**, which is explicitly
+where the plan says the yaml gets wired in anyway.

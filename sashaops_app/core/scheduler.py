@@ -31,6 +31,9 @@ import structlog
 
 log = structlog.get_logger()
 
+# Portability (Task 2.8): mirrored in config/markets/pakistan.yaml (market_hours:)
+# as the value of record - update both until Phase 6 wires the yaml into the
+# loader and PKT/the window below are read from it instead of hardcoded here.
 PKT = ZoneInfo("Asia/Karachi")
 _TICK_SECONDS = 60          # how often the scheduler checks for due jobs
 _JOB_STAGGER_SECONDS = 5    # gap between jobs that become due in the same tick
