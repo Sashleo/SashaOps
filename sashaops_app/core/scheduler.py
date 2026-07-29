@@ -53,6 +53,7 @@ class Job:
     fn: Callable[[], object]        # zero-arg callable; return value is logged, not used for control flow
     cadence: str                    # human-readable, shown in the boot log
     due: Callable[[datetime, Optional[datetime]], bool]   # (now, last_run) -> is it due?
+    default_freshness_hours: float = 24.0   # Data Health card colour thresholds (Task 2.6)
     market_hours_only: bool = False
     last_run: Optional[datetime] = field(default=None, repr=False)
     disabled_reason: Optional[str] = None
@@ -213,55 +214,60 @@ def build_jobs() -> list[Job]:
         # PSX (market-hours-aware)
         Job("psx_prices_intraday", "PSX prices (intraday)",
            _psx_prices_job, "every 15 min, market hours",
-           _every_minutes(15), market_hours_only=True),
+           _every_minutes(15), default_freshness_hours=1, market_hours_only=True),
         Job("psx_prices_close", "PSX prices (close)",
-           _psx_prices_job, "daily 17:00 PKT", _daily_at(17, 0)),
+           _psx_prices_job, "daily 17:00 PKT", _daily_at(17, 0),
+           default_freshness_hours=27),
         Job("psx_company_profile", "PSX company profile (bulk)",
-           _psx_company_profile_job, "daily 02:00 PKT", _daily_at(2, 0)),
+           _psx_company_profile_job, "daily 02:00 PKT", _daily_at(2, 0),
+           default_freshness_hours=30),
         Job("psx_financials", "PSX financials (bulk)",
            lambda: _run_plain("psx_financials", _psx_financials_job),
-           "weekly Sunday 03:00 PKT", _weekly_at(6, 3, 0)),
+           "weekly Sunday 03:00 PKT", _weekly_at(6, 3, 0),
+           default_freshness_hours=192),
         Job("psx_announcements", "PSX announcements",
            lambda: _run_plain("psx_announcements", _psx_announcements_job),
-           "hourly, market hours", _hourly(), market_hours_only=True),
+           "hourly, market hours", _hourly(),
+           default_freshness_hours=4, market_hours_only=True),
 
         # Gov / macro scrapers (verified in docs/scraper_verification.md)
         Job("sbp_monetary", "SBP monetary policy",
            _gov_scraper_job("intelligence.gov_scrapers.sbp_monetary", "SBPMonetaryScraper"),
-           "daily 09:00 PKT", _daily_at(9, 0)),
+           "daily 09:00 PKT", _daily_at(9, 0), default_freshness_hours=720),
         Job("sbp_forex", "Forex rates",
            _gov_scraper_job("intelligence.exchange_scrapers.central_banks.sbp_pakistan",
                             "SBPPakistanForexScraper"),
-           "daily 08:00 PKT", _daily_at(8, 0)),
+           "daily 08:00 PKT", _daily_at(8, 0), default_freshness_hours=24),
         Job("fbr_revenue", "FBR revenue",
            _gov_scraper_job("intelligence.gov_scrapers.fbr_revenue", "FBRRevenueScraper"),
-           "weekly Monday 08:00 PKT", _weekly_at(0, 8, 0)),
+           "weekly Monday 08:00 PKT", _weekly_at(0, 8, 0), default_freshness_hours=720),
         Job("nepra_power", "NEPRA tariff determinations",
            _gov_scraper_job("intelligence.gov_scrapers.nepra_power", "NEPRAPowerScraper"),
-           "weekly Monday 08:00 PKT", _weekly_at(0, 8, 0)),
+           "weekly Monday 08:00 PKT", _weekly_at(0, 8, 0), default_freshness_hours=168),
         Job("ogra_prices", "OGRA fuel prices",
            _gov_scraper_job("intelligence.gov_scrapers.ogra_prices", "OGRAPricesScraper"),
-           "Mon+Fri 08:00 PKT", _days_at((0, 4), 8, 0)),
+           "Mon+Fri 08:00 PKT", _days_at((0, 4), 8, 0), default_freshness_hours=336),
         Job("pbs_lsmi", "PBS LSM + CPI",
            _gov_scraper_job("intelligence.gov_scrapers.pbs_lsmi", "PBSLsmiScraper"),
-           "monthly (day 1) 08:00 PKT", _monthly_at(1, 8, 0)),
+           "monthly (day 1) 08:00 PKT", _monthly_at(1, 8, 0), default_freshness_hours=720),
         Job("pta_stats", "PTA mobile subscribers",
            _gov_scraper_job("intelligence.gov_scrapers.pta_stats", "PTAStatsScraper"),
-           "monthly (day 1) 08:00 PKT", _monthly_at(1, 8, 0)),
+           "monthly (day 1) 08:00 PKT", _monthly_at(1, 8, 0), default_freshness_hours=720),
         Job("worldbank_pak", "World Bank Pakistan",
            _gov_scraper_job("intelligence.gov_scrapers.worldbank_pak", "WorldBankPakScraper"),
-           "monthly (day 1) 08:00 PKT", _monthly_at(1, 8, 0)),
+           "monthly (day 1) 08:00 PKT", _monthly_at(1, 8, 0), default_freshness_hours=8760),
 
         # Derived / maintenance
         Job("sector_medians", "PSX sector medians",
            lambda: _run_plain("sector_medians", _sector_medians_job),
-           "daily 05:00 PKT", _daily_at(5, 0)),
+           "daily 05:00 PKT", _daily_at(5, 0), default_freshness_hours=30),
         Job("news_feeds", "News feed cache (heartbeat)",
            lambda: _run_plain("news_feeds", _news_feeds_job),
-           "every 30 min (fetch runs separately)", _every_minutes(30)),
+           "every 30 min (fetch runs separately)", _every_minutes(30),
+           default_freshness_hours=1),
         Job("sanity_checks", "Macro observation sanity sweep",
            lambda: _run_plain("sanity_checks", _sanity_checks_job),
-           "hourly", _hourly()),
+           "hourly", _hourly(), default_freshness_hours=2),
     ]
 
 

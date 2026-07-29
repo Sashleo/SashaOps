@@ -24,21 +24,7 @@
 
 <!-- 2. Data health -->
 <div class="card mb-24">
-  <div class="card-title">Data Health</div>
-  <table style="width:100%; font-size:0.88em; border-collapse:collapse; margin-top:6px">
-    {% for row in data_health %}
-    <tr>
-      <td style="padding:6px 0; color:var(--text-muted)">{{ row.label }}</td>
-      <td style="padding:6px 0; text-align:right; font-family:var(--font-mono);
-                 color:{% if row.status == 'red' %}#f87171{% elif row.status == 'amber' %}#f59e0b{% else %}var(--accent){% endif %}">
-        {{ row.value }}
-      </td>
-    </tr>
-    {% endfor %}
-  </table>
-  <div style="font-size:0.75em; color:var(--text-dim); margin-top:8px">
-    Amber: older than 24h. Red: older than 72h.
-  </div>
+  {% include "partials/data_health.html" %}
 </div>
 
 <!-- 3. Quick actions -->

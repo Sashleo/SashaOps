@@ -29,75 +29,53 @@ def _get_sidebar_data(request: Request) -> dict:
     return {"clients": clients, "active_client": active_client}
 
 
-def _age_status(ts: str | None):
-    """Return (display, status) where status is ok|amber|red|none from an ISO/date string."""
-    if not ts:
-        return "never", "red"
-    raw = str(ts).strip().replace("T", " ")
-    parsed = None
-    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            parsed = datetime.strptime(raw[:len(fmt) + 6], fmt)
-            break
-        except ValueError:
-            continue
-    if parsed is None:
-        return str(ts)[:19], "ok"
-    hours = (datetime.utcnow() - parsed).total_seconds() / 3600.0
-    status = "red" if hours > 72 else "amber" if hours > 24 else "ok"
-    return str(ts)[:19], status
-
-
-def _max_ts(db, table: str, col: str) -> str | None:
-    try:
-        row = db.execute(f"SELECT MAX({col}) FROM {table}").fetchone()
-        return row[0] if row else None
-    except Exception:
-        return None
-
-
-def _data_health(db) -> list[dict]:
-    """Freshness of the core data sources, read from the scraper-populated tables."""
-    prices     = _max_ts(db, "psx_prices", "fetched_at")
-    financials = _max_ts(db, "scraper_runs", "completed_at")  # psx financials via scraper batch
-    macro      = _max_ts(db, "pk_macro", "fetched_at")
-    medians    = _max_ts(db, "psx_sector_medians", "computed_date")
-
-    # Feed sources OK / total from the most recent scraper cycle status counts.
-    feeds_val, feeds_status = "n/a", "amber"
-    try:
-        ok    = db.execute("SELECT COUNT(*) FROM scraper_runs WHERE status='success'").fetchone()[0]
-        total = db.execute("SELECT COUNT(DISTINCT scraper_id) FROM scraper_runs").fetchone()[0]
-        if total:
-            feeds_val = f"{ok}/{total}"
-            feeds_status = "ok" if ok >= total else "amber" if ok else "red"
-    except Exception:
-        pass
-
-    rows = []
-    for label, ts in (
-        ("PSX prices last refreshed", prices),
-        ("PSX financials last refreshed", financials),
-        ("Macro (SBP/PBS) last updated", macro),
-        ("Sector medians last computed", medians),
-    ):
-        disp, status = _age_status(ts)
-        rows.append({"label": label, "value": disp, "status": status})
-    rows.insert(3, {"label": "Feed sources OK", "value": feeds_val, "status": feeds_status})
-    return rows
+def _data_health() -> list[dict]:
+    """Real per-scraper status (Task 2.6), read from scrape_log via the job
+    registry itself so this list can never drift from what actually runs."""
+    from core.data_health import compute_data_health
+    return compute_data_health()
 
 
 @router.get("/", response_class=HTMLResponse)
 @router.get("", response_class=HTMLResponse)
 async def dashboard(request: Request):
     require_session(request)
-    db = get_db()
     sidebar = _get_sidebar_data(request)
     return templates.TemplateResponse("dashboard.html", {
         "request":     request,
         "active_page": "dashboard",
-        "data_health": _data_health(db),
+        "data_health": _data_health(),
         **sidebar,
+    })
+
+
+@router.get("/data-health", response_class=HTMLResponse)
+async def data_health_partial(request: Request):
+    """HTMX partial: current per-job status. Polled while a manual refresh is
+    in flight so rows update live without a full page reload."""
+    require_session(request)
+    from core.data_health import any_running
+    return templates.TemplateResponse("partials/data_health.html", {
+        "request": request,
+        "data_health": _data_health(),
+        "any_running": any_running(),
+    })
+
+
+@router.post("/data-health/refresh")
+async def data_health_refresh(request: Request, job_id: str = Form("")):
+    """Queue a manual refresh (one job, or every job if job_id is blank) and
+    return the partial immediately so polling can take over from there."""
+    require_session(request)
+    from core.data_health import trigger_refresh, trigger_refresh_all, any_running
+    if job_id:
+        trigger_refresh(job_id)
+    else:
+        trigger_refresh_all()
+    return templates.TemplateResponse("partials/data_health.html", {
+        "request": request,
+        "data_health": _data_health(),
+        "any_running": any_running(),
     })
 
 
