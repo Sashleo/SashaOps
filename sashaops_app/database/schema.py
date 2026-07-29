@@ -525,7 +525,7 @@ def _apply_column_additions(db) -> None:
         ("profile_fetched_at", "TEXT"),
     ):
         _add_column_if_missing(db, "psx_companies", _c, _t)
-    for _c, _t in (("close", "REAL"), ("total_trades", "INTEGER")):
+    for _c, _t in (("close", "REAL"), ("total_trades", "INTEGER"), ("sanity_flag", "TEXT")):
         _add_column_if_missing(db, "psx_prices", _c, _t)
 
     # Phase 2 provenance: every macro observation must be traceable back to the

@@ -60,4 +60,19 @@
   <div style="font-size:0.75em; color:var(--text-dim); margin-top:8px">
     Green: fresh. Amber: partial or stale (1-3x expected). Red: unreachable, failed, or never run.
   </div>
+
+  {% if violations %}
+  <div style="margin-top:14px; padding-top:10px; border-top:1px solid var(--bg-2)">
+    <div style="font-size:0.7em; color:#f59e0b; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:6px">
+      Flagged values ({{ violations|length }})
+    </div>
+    {% for v in violations %}
+    <div style="border-left:3px solid #f59e0b; padding:6px 8px; margin-bottom:4px; font-size:0.82em">
+      <div style="color:var(--text-secondary)">{{ v.label }}</div>
+      <div style="color:var(--text-dim); font-size:0.9em">{{ v.message }}</div>
+      <div style="color:#f59e0b; font-size:0.9em; margin-top:2px">{{ v.prompt }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 </div>

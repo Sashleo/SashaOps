@@ -185,13 +185,25 @@ def get_flagged() -> List[dict]:
     return [o for o in get_observations() if o.get("sanity_flag")]
 
 
+def _check_psx_price(value: Optional[float]) -> Optional[str]:
+    """Plan rule: psx_prices.current > 0 and < 10,000,000. Lives outside pk_macro
+    (a different table entirely - PSX quote data, not a macro observation), so it
+    is swept separately rather than forced into SANITY_BOUNDS/check_sanity, which
+    are keyed by macro indicator name."""
+    if value is None:
+        return None
+    return None if 0 < float(value) < 10_000_000 else "implausible"
+
+
 def resweep_sanity() -> int:
-    """Re-apply the bounds to everything stored (the hourly sanity job). Returns
-    the number of rows whose flag changed. Never deletes."""
+    """Re-apply the bounds to everything stored (the hourly sanity job): every
+    pk_macro observation, plus PSX current prices (a separate table/rule per the
+    plan). Returns the number of rows whose flag changed. Never deletes - flags."""
     changed = 0
     try:
         from database.connection import get_db
         db = get_db()
+
         rows = db.execute("SELECT id, indicator, value, sanity_flag FROM pk_macro").fetchall()
         for r in rows:
             flag = check_sanity(r["indicator"], r["value"])
@@ -201,7 +213,36 @@ def resweep_sanity() -> int:
                 if flag:
                     log.warning("Sanity check flagged a stored value",
                                 indicator=r["indicator"], value=r["value"])
+
+        price_rows = db.execute(
+            "SELECT id, symbol, current, sanity_flag FROM psx_prices "
+            "WHERE trade_date = (SELECT MAX(trade_date) FROM psx_prices)"
+        ).fetchall()
+        for r in price_rows:
+            flag = _check_psx_price(r["current"])
+            if flag != r["sanity_flag"]:
+                db.execute("UPDATE psx_prices SET sanity_flag = ? WHERE id = ?", (flag, r["id"]))
+                changed += 1
+                if flag:
+                    log.warning("Sanity check flagged a PSX price", symbol=r["symbol"],
+                               value=r["current"])
+
         db.commit()
     except Exception as e:
         log.warning("resweep_sanity failed", error=str(e)[:150])
     return changed
+
+
+def get_flagged_prices() -> List[dict]:
+    """PSX prices currently flagged implausible, for the same latest trading day
+    swept by resweep_sanity() (surfaced amber on Data Health)."""
+    try:
+        from database.connection import get_db
+        rows = get_db().execute(
+            "SELECT symbol, trade_date, current, sanity_flag FROM psx_prices "
+            "WHERE sanity_flag = 'implausible' "
+            "AND trade_date = (SELECT MAX(trade_date) FROM psx_prices)"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []

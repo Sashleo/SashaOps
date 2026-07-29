@@ -40,11 +40,13 @@ def _data_health() -> list[dict]:
 @router.get("", response_class=HTMLResponse)
 async def dashboard(request: Request):
     require_session(request)
+    from core.data_health import get_sanity_violations
     sidebar = _get_sidebar_data(request)
     return templates.TemplateResponse("dashboard.html", {
         "request":     request,
         "active_page": "dashboard",
         "data_health": _data_health(),
+        "violations":  get_sanity_violations(),
         **sidebar,
     })
 
@@ -54,10 +56,11 @@ async def data_health_partial(request: Request):
     """HTMX partial: current per-job status. Polled while a manual refresh is
     in flight so rows update live without a full page reload."""
     require_session(request)
-    from core.data_health import any_running
+    from core.data_health import any_running, get_sanity_violations
     return templates.TemplateResponse("partials/data_health.html", {
         "request": request,
         "data_health": _data_health(),
+        "violations": get_sanity_violations(),
         "any_running": any_running(),
     })
 
@@ -67,7 +70,7 @@ async def data_health_refresh(request: Request, job_id: str = Form("")):
     """Queue a manual refresh (one job, or every job if job_id is blank) and
     return the partial immediately so polling can take over from there."""
     require_session(request)
-    from core.data_health import trigger_refresh, trigger_refresh_all, any_running
+    from core.data_health import trigger_refresh, trigger_refresh_all, any_running, get_sanity_violations
     if job_id:
         trigger_refresh(job_id)
     else:
@@ -75,6 +78,7 @@ async def data_health_refresh(request: Request, job_id: str = Form("")):
     return templates.TemplateResponse("partials/data_health.html", {
         "request": request,
         "data_health": _data_health(),
+        "violations": get_sanity_violations(),
         "any_running": any_running(),
     })
 

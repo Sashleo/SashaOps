@@ -183,3 +183,33 @@ def compute_data_health() -> list[dict]:
         })
 
     return rows
+
+
+def get_sanity_violations() -> list[dict]:
+    """
+    Every value currently flagged 'implausible' by the hourly sanity sweep
+    (Task 2.7), across both the macro observation pipeline (pk_macro) and PSX
+    prices - a distinct amber entry per violation, with the manual-check prompt
+    the plan calls for, so a bad number is impossible to miss on the Data Health
+    card even though its owning job's own status line stays green (the SCRAPE
+    succeeded; it's the VALUE that looks wrong).
+    """
+    from database.provenance import get_flagged, get_flagged_prices, SANITY_BOUNDS
+
+    out = []
+    for o in get_flagged():
+        lo_hi = SANITY_BOUNDS.get(o["indicator"])
+        bounds = f"expected {lo_hi[0]}-{lo_hi[1]}" if lo_hi else "outside its plausible range"
+        out.append({
+            "label": f"{o['indicator']} = {o['value']}",
+            "message": f"{bounds}. Source: {o.get('source') or o.get('scraper_id') or '?'}, "
+                      f"period {o.get('period', '?')}.",
+            "prompt": f"Check {o.get('source_url') or 'the source'} by hand before trusting this value.",
+        })
+    for p in get_flagged_prices():
+        out.append({
+            "label": f"{p['symbol']} price = {p['current']}",
+            "message": "expected > 0 and < 10,000,000 PKR",
+            "prompt": f"Check dps.psx.com.pk/company/{p['symbol']} by hand before trusting this value.",
+        })
+    return out
