@@ -31,7 +31,7 @@ from database.connection import init_database
 from database.schema import run_migrations
 from security.auth import SessionMiddleware
 from core.feed_cache import run_feed_scheduler
-from core.exchange_scheduler import run_exchange_scheduler
+from core.scheduler import run_scheduler
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 from routers import (
@@ -114,9 +114,9 @@ def create_app() -> FastAPI:
         # Start background feed cache — keeps all region feeds live
         asyncio.create_task(run_feed_scheduler())
         log.info("Feed scheduler started")
-        # Start background exchange scraper — forex rates + index prices
-        asyncio.create_task(run_exchange_scheduler())
-        log.info("Exchange scraper scheduler started")
+        # Start the central job scheduler — every scraper, its own cadence (Task 2.5)
+        asyncio.create_task(run_scheduler())
+        log.info("Job scheduler started")
 
     # ── Global error handler ──────────────────────────────────────────────────
     @app.exception_handler(Exception)

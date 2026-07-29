@@ -7,7 +7,7 @@ for each PSX sector from ALL companies whose values pass plausibility validation
 the bank-valuation section (M8) read from this table. Sectors with < 4 valid companies
 are reported as "insufficient peers" rather than compared.
 
-Pure local DB work — no AI, no network. Intended to run nightly (exchange_scheduler).
+Pure local DB work — no AI, no network. Runs daily via core/scheduler.py.
 """
 
 from __future__ import annotations

@@ -424,3 +424,30 @@ def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
             log.info("PSX financials persist skipped", ticker=ticker, error=str(e)[:80])
 
     return doc, name
+
+
+def bulk_refresh_psx_financials() -> int:
+    """
+    Weekly bulk job (Phase 2 Task 2.5): refresh psx_financials for every listed
+    company, not only ones an analyst has opened. fetch_psx_doc_financials()
+    already persists internally; this just iterates every non-debt ticker and
+    counts how many produced a usable statement. One ticker failing must never
+    stop the rest.
+    """
+    from database.connection import get_db
+    tickers = [row[0] for row in get_db().execute(
+        "SELECT symbol FROM psx_companies WHERE COALESCE(is_debt,0)=0 ORDER BY symbol"
+    ).fetchall()]
+
+    done = 0
+    for ticker in tickers:
+        try:
+            if fetch_psx_doc_financials(ticker):
+                done += 1
+        except Exception as e:
+            log.info("Bulk PSX financials refresh skipped ticker",
+                     ticker=ticker, error=str(e)[:100])
+    log.info("Bulk PSX financials refresh complete", tickers=len(tickers), succeeded=done)
+    return done
+
+    return doc, name

@@ -175,6 +175,22 @@ def upsert_psx_index(index_code: str, trade_date: str, close_value: Optional[flo
     return inserted
 
 
+def upsert_psx_announcement(symbol: str, ann_type: str, ann_date: Optional[str],
+                            title: Optional[str], document_url: Optional[str] = None) -> bool:
+    """Insert a PSX announcement row. Returns True if inserted (dedup on the
+    natural key symbol+ann_type+ann_date+title, since PSX has no announcement id)."""
+    db = get_db()
+    db.execute(
+        """INSERT OR IGNORE INTO psx_announcements
+           (symbol, ann_type, ann_date, title, document_url, fetched_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (symbol.upper(), ann_type, ann_date, title, document_url, _now()),
+    )
+    inserted = db.execute("SELECT changes()").fetchone()[0] > 0
+    db.commit()
+    return inserted
+
+
 # ── Sector peers ──────────────────────────────────────────────────────────────
 
 def get_psx_sector_peers(symbol: str, limit: int = 12) -> List[dict]:
