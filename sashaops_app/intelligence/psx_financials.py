@@ -112,6 +112,63 @@ def _report_is_sane(report: dict) -> bool:
     return True
 
 
+def _same_reporting_basis(summary: dict, report: dict) -> bool:
+    """
+    Whether an annual report describes the SAME reporting entity/basis as the PSX
+    summary, judged by revenue agreement after unit alignment.
+
+    Verified 2026-07-29 (LUCK): PSX publishes STANDALONE Sales of 124,511,744 for
+    FY2025 while the annual report's statements parse to 310,459,264 - the
+    CONSOLIDATED group figure including subsidiaries. Both are correct; they are
+    simply different entities. Adopting the report wholesale silently swapped the
+    income statement onto a different basis from every earlier period in the same
+    series, manufacturing a fake +169% revenue jump for FY2025.
+
+    So wholesale adoption now requires the two revenues to agree within 20% once
+    a power-of-1000 unit difference is allowed for. When they disagree, the PSX
+    summary (verified in Phase 2, Priority 2) stays authoritative for the income
+    statement and the report is used only to FILL missing balance-sheet fields.
+    """
+    s_rev = summary.get("revenue")
+    r_rev = report.get("revenue")
+    if not s_rev or not r_rev:
+        return False
+    ratio = r_rev / s_rev
+    for unit in (1.0, 1000.0, 1 / 1000.0):
+        aligned = ratio / unit
+        if 0.8 <= aligned <= 1.25:
+            return True
+    log.info("Annual report is on a different reporting basis than the PSX summary "
+             "(consolidated vs standalone suspected) - keeping the summary income "
+             "statement", ticker=summary.get("_ticker", "?"),
+             summary_revenue=s_rev, report_revenue=r_rev)
+    return False
+
+
+def _plausible_balance_sheet_value(field: str, value, total_assets) -> bool:
+    """
+    Reject a merged balance-sheet field that cannot be true given total assets.
+
+    Verified 2026-07-29 (HBL): total_equity parsed as 2024.0 - a fiscal YEAR read
+    off the statement header as a figure - against total assets of 3,849,063
+    (PKR '000). That is equity at 0.05% of assets, impossible for a listed bank,
+    and it would have driven ROE, the equity multiplier, DuPont and Altman X4
+    into nonsense. A field this far outside any real balance sheet is dropped and
+    surfaces as "Required: X" rather than poisoning every downstream ratio.
+    """
+    if value is None or not total_assets or total_assets <= 0:
+        return True
+    share = abs(float(value)) / abs(float(total_assets))
+    if field in ("shareholders_equity", "total_equity"):
+        # Even the thinnest listed bank holds >1% equity; anything under that is a
+        # parse artefact, not a capital structure.
+        return share >= 0.01
+    if field in ("current_assets", "current_liabilities", "total_debt", "inventory",
+                 "receivables", "payables", "cash", "retained_earnings"):
+        return share <= 3.0
+    return True
+
+
 def _report_is_reliable(report: dict) -> bool:
     """
     Whether an annual-report parse is trustworthy enough to feed real analysis.
@@ -160,6 +217,75 @@ def _build_doc_financials(table: dict) -> dict:
     if max_year > 0:
         out["_fiscal_year"] = str(max_year)
     return out
+
+
+def build_period_rows(table: dict) -> dict:
+    """
+    Split a PSX financial table {metric: {period: value}} into ONE dict PER PERIOD.
+
+    _build_doc_financials() collapses the table to the latest period only, which is
+    right for a single-point analysis but silently discards the multi-year history
+    the PSX page actually publishes (verified 2026-07-29: LUCK returns Sales,
+    Profit after Taxation and EPS for 2025/2024/2023/2022). Without those extra
+    periods there is no horizontal analysis, no growth/CAGR, and no trend chart -
+    every one of which Phase 3 needs.
+
+    Returns {period: {field: value}}, e.g. {"2025": {"revenue": ..., "eps": ...}, ...}.
+    Only periods carrying at least one mapped value are returned.
+    """
+    per_period: dict = {}
+    for metric, value_map in (table or {}).items():
+        if not isinstance(value_map, dict):
+            continue
+        n = _norm(metric)
+        key = None
+        for aliases, mapped in _DOC_MAP:
+            if any(n == a or n.startswith(a) for a in aliases):
+                key = mapped
+                break
+        if not key:
+            continue
+        for period, value in value_map.items():
+            if isinstance(value, (int, float)):
+                per_period.setdefault(str(period), {}).setdefault(key, float(value))
+    return per_period
+
+
+def persist_period_history(ticker: str, data: dict) -> int:
+    """
+    Persist every annual period the PSX page reports as its own psx_financials row.
+
+    The latest period is already written by fetch_psx_doc_financials() (with the
+    richer annual-report merge applied); this backfills the EARLIER periods, which
+    were previously dropped entirely. Earlier rows carry only what PSX itself
+    publishes for them (typically revenue, net income, EPS) - deliberately not
+    padded with the latest period's balance-sheet figures, which do not belong to
+    those years. Returns the number of period rows written.
+    """
+    table = (data or {}).get("annual_financials") or {}
+    rows = build_period_rows(table)
+    if not rows:
+        return 0
+
+    written = 0
+    latest = max((_year_of(p) for p in rows), default=-1)
+    for period, doc in rows.items():
+        # Skip the latest period: fetch_psx_doc_financials() writes a richer row
+        # for it (summary + annual-report balance sheet) that must not be
+        # overwritten by this thinner summary-only version.
+        if _year_of(period) == latest:
+            continue
+        if not doc.get("revenue") and not doc.get("net_income"):
+            continue
+        try:
+            upsert_psx_financials(ticker, str(period), "annual", doc, raw={})
+            written += 1
+        except Exception as e:
+            log.debug("period history upsert failed", ticker=ticker,
+                     period=period, error=str(e)[:80])
+    if written:
+        log.info("Stored PSX period history", ticker=ticker, periods=written)
+    return written
 
 
 # DB columns → analyse_from_document keys (mostly identity; equity is aliased).
@@ -251,6 +377,13 @@ def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
         doc = _build_doc_financials(data.get("annual_financials") or {})
         if not doc.get("revenue"):
             doc = _build_doc_financials(data.get("quarterly_financials") or {})
+        # Keep the EARLIER annual periods too. Without them there is no horizontal
+        # analysis, growth/CAGR or trend chart - the page can only ever show a
+        # single point in time.
+        try:
+            persist_period_history(ticker, data)
+        except Exception as _ph:
+            log.debug("period history skipped", ticker=ticker, error=str(_ph)[:80])
 
     # ── Fallback 1: cached psx_financials rows from a prior run ───────────────
     if not doc.get("revenue"):
@@ -351,8 +484,9 @@ def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
                 source = "psx_summary(report_rejected_unreliable_ocr)"
                 log.info("Annual report rejected as unreliable OCR - summary kept",
                          ticker=ticker, balance_ok=report.get("_balance_ok"))
-            elif _report_is_sane(report):
-                # Reliable, complete statement — adopt wholesale.
+            elif _report_is_sane(report) and _same_reporting_basis(doc, report):
+                # Reliable, complete statement on the SAME reporting basis as the
+                # PSX summary — adopt wholesale.
                 if not report.get("_fiscal_year") and summary_fy:
                     report["_fiscal_year"] = summary_fy
                 doc = report
@@ -376,11 +510,20 @@ def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
                 # summary lacks (total_assets ideal but not required — filling
                 # inventory/receivables/payables still improves efficiency/leverage).
                 if units_ok and any(report.get(k) is not None for k in _BS_FIELDS):
-                    filled = []
+                    filled, rejected = [], []
+                    ta = report.get("total_assets")
+                    ta = ta * scale if ta is not None else doc.get("total_assets")
                     for k in _BS_FIELDS:
                         if doc.get(k) is None and report.get(k) is not None:
-                            doc[k] = report[k] * scale
+                            candidate = report[k] * scale
+                            if not _plausible_balance_sheet_value(k, candidate, ta):
+                                rejected.append(k)
+                                continue
+                            doc[k] = candidate
                             filled.append(k)
+                    if rejected:
+                        log.warning("Dropped implausible balance-sheet fields from report",
+                                   ticker=ticker, fields=rejected)
                     if filled:
                         source = "psx_summary+report_bs" + ("_ocr" if report.get("_ocr") else "")
                         log.info("Merged balance-sheet fields from annual report",

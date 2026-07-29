@@ -247,6 +247,12 @@ CREATE TABLE IF NOT EXISTS psx_financials (
 );
 CREATE INDEX IF NOT EXISTS idx_psx_financials_symbol
     ON psx_financials(symbol, period_type);
+-- Phase 3: build_analysis() reads a ticker's periods newest-first for every
+-- section. Including `period` lets that ORDER BY be served from the index rather
+-- than a filesort, which is the plan's stated way to hold the 500ms budget
+-- without introducing a cache (and the staleness bugs a cache brings).
+CREATE INDEX IF NOT EXISTS idx_psx_financials_symbol_period
+    ON psx_financials(symbol, period_type, period DESC);
 
 -- PSX announcements (financial results, board meetings, dividends)
 CREATE TABLE IF NOT EXISTS psx_announcements (
