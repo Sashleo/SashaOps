@@ -112,6 +112,10 @@ def _report_is_sane(report: dict) -> bool:
     return True
 
 
+class _SkipReport(Exception):
+    """Internal signal: bulk mode deliberately skips annual-report enrichment."""
+
+
 def _same_reporting_basis(summary: dict, report: dict) -> bool:
     """
     Whether an annual report describes the SAME reporting entity/basis as the PSX
@@ -328,7 +332,7 @@ def _is_fresh(fetched_at: Optional[str], max_age_hours: int = 24) -> bool:
         return False
 
 
-def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
+def fetch_psx_doc_financials(ticker: str, skip_report: bool = False) -> Optional[tuple]:
     """
     Fetch PSX financials and return (doc_financials_dict, company_name) ready for
     analyse_from_document(). Returns None if no usable revenue figure is found.
@@ -472,6 +476,14 @@ def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
                   "payables", "retained_earnings", "ebit", "interest_expense",
                   "depreciation", "gross_profit")
     try:
+        if skip_report:
+            # Bulk-sweep mode. Measured 2026-07-30: the annual-report step costs
+            # ~104s per ticker (PDF download + parse), i.e. ~22 hours across 757
+            # listed companies - impractical as one job. The PSX summary alone
+            # carries the income statement, which is what breadth-oriented work
+            # (sector medians, percentiles, peer comparison) needs; balance-sheet
+            # enrichment stays a per-ticker on-demand cost.
+            raise _SkipReport()
         from intelligence.psx_report_parser import fetch_psx_report_financials
         report = fetch_psx_report_financials(ticker)
         if report:
@@ -528,6 +540,8 @@ def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
                         source = "psx_summary+report_bs" + ("_ocr" if report.get("_ocr") else "")
                         log.info("Merged balance-sheet fields from annual report",
                                  ticker=ticker, fields=filled, scale=scale)
+    except _SkipReport:
+        source = "psx_summary(bulk_no_report)"
     except Exception as e:
         log.info("PSX report enrichment skipped", ticker=ticker, error=str(e)[:80])
 
@@ -585,12 +599,14 @@ def bulk_refresh_psx_financials() -> int:
     done = 0
     for ticker in tickers:
         try:
-            if fetch_psx_doc_financials(ticker):
+            # skip_report: the per-ticker annual-report step measured ~104s
+            # (2026-07-30), which is ~22 hours across every listed company. The
+            # summary alone carries the income statement this job exists to
+            # populate; balance-sheet enrichment happens per ticker on demand.
+            if fetch_psx_doc_financials(ticker, skip_report=True):
                 done += 1
         except Exception as e:
             log.info("Bulk PSX financials refresh skipped ticker",
                      ticker=ticker, error=str(e)[:100])
     log.info("Bulk PSX financials refresh complete", tickers=len(tickers), succeeded=done)
     return done
-
-    return doc, name

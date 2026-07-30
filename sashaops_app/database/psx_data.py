@@ -118,7 +118,14 @@ def upsert_psx_financials(symbol: str, period: str, period_type: str,
         _now(),
     ]
     placeholders = ",".join("?" * len(cols))
-    updates = ",".join(f"{c}=excluded.{c}" for c in (*_FIN_COLS, "raw_json", "fetched_at"))
+    # COALESCE(excluded.x, x): an incoming NULL means "this source does not carry
+    # that field", NOT "the field is empty". A plain excluded.x overwrite let the
+    # bulk sweep (summary-only, no annual-report merge) silently NULL out
+    # balance-sheet fields a previous per-ticker run had extracted from the PDF -
+    # observed wiping BFBIO's ebit/inventory/receivables/payables and dropping its
+    # validated ratio count from 9 to 4. Richer data now survives a thinner refresh.
+    updates = ",".join(f"{c}=COALESCE(excluded.{c}, {c})" for c in _FIN_COLS)
+    updates += ",raw_json=COALESCE(excluded.raw_json, raw_json),fetched_at=excluded.fetched_at"
     db.execute(
         f"""INSERT INTO psx_financials ({",".join(cols)})
             VALUES ({placeholders})
