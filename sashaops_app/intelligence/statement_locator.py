@@ -116,6 +116,123 @@ def _numeric_row_count(text: str) -> int:
                if _STATEMENT_NUM.search(line))
 
 
+# Rows on an audited statement carry two money columns (current and prior). A page
+# whose identity rows carry three or more is a multi-year summary - "Six Years at a
+# Glance", "Financial Highlights", "Key Operating and Financial Data". Verified on
+# ABOT page 77, which carries six periods per row and is NOT the statement of
+# financial position, though it matched the same title pattern.
+_IDENTITY_ROW = re.compile(
+    r"^\s*(total\s+assets|total\s+equity|total\s+liabilit|"
+    r"current\s+assets|current\s+liabilit|net\s+assets)\b", re.I)
+SUMMARY_MIN_COLUMNS = 3
+_YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
+
+
+def count_money_columns(text: str) -> int:
+    """
+    Money columns per identity row, taken as the MODE across those rows.
+
+    The mode rather than the max: a stray note reference or a percentage column on
+    one row should not reclassify the page, whereas a genuine six-year summary
+    carries six figures on every identity row.
+    """
+    counts = []
+    for line in (text or "").split("\n"):
+        if not _IDENTITY_ROW.match(_clean_line(line)):
+            continue
+        clean = _clean_line(line)
+        m = _IDENTITY_ROW.match(clean)
+        n = len(_columns(clean, after=m.end()))
+        if n:
+            counts.append(n)
+    if not counts:
+        return 0
+    return max(set(counts), key=counts.count)
+
+
+def classify_page(text: str) -> tuple:
+    """
+    ('statement' | 'summary' | 'neither', n_columns).
+
+    Two money columns per identity row is an audited statement; three or more is a
+    multi-year summary. A page with no identity row carrying figures is neither -
+    ABOT page 89 is a bar chart whose only numbers are axis percentages, and
+    calling that a statement would send the parser looking for lines it cannot
+    have.
+    """
+    n = count_money_columns(text)
+    if n >= SUMMARY_MIN_COLUMNS:
+        return "summary", n
+    if n == 0:
+        return "neither", 0
+    return "statement", n
+
+
+def extract_period_labels(text: str, n_columns: int,
+                          latest_year: Optional[int] = None) -> list:
+    """
+    Period label per column, newest first.
+
+    Prefers years actually printed in a header row. Falls back to counting back
+    from the latest known fiscal year, which is the convention in every Pakistani
+    multi-year summary seen so far (leftmost most recent, descending rightwards).
+    """
+    for line in (text or "").split("\n")[:25]:
+        years = [int(m.group()) for m in _YEAR_RE.finditer(line)]
+        # A header row, not a sentence that happens to mention a year.
+        if len(years) >= n_columns and len(set(years)) == len(years):
+            return [str(y) for y in years[:n_columns]]
+    if latest_year is None:
+        all_years = [int(m.group()) for m in _YEAR_RE.finditer(text or "")]
+        latest_year = max(all_years) if all_years else None
+    if latest_year is None:
+        return [f"col{i + 1}" for i in range(n_columns)]
+    return [str(latest_year - i) for i in range(n_columns)]
+
+
+def parse_multi_period(text: str) -> dict:
+    """
+    Every period on a multi-year summary page, not just the first two.
+
+    Returns {period_label: {field: raw_value}}. Summaries carry totals only, so a
+    caller must not read the absence of granular lines as a failure.
+    """
+    lines = [_clean_line(l) for l in (text or "").split("\n") if l.strip()]
+    n_cols = count_money_columns(text)
+    if n_cols < SUMMARY_MIN_COLUMNS:
+        return {}
+    labels = extract_period_labels(text, n_cols)
+
+    by_field: dict = {}
+    for field, anchors in _FIELDS.items():
+        for conf, pat in anchors:
+            rx = re.compile(pat, re.I)
+            hit = None
+            for line in lines:
+                m = rx.match(line)
+                if not m or _SUBITEM_GUARD.search(line):
+                    continue
+                cols = _columns(line, after=m.end())
+                # Only a row carrying the full period set is a summary row; a
+                # partial row is a different table that happens to share a label.
+                if len(cols) < n_cols:
+                    continue
+                if field in _MUST_BE_POSITIVE and cols[0] <= 0:
+                    continue
+                hit = cols[:n_cols]
+                break
+            if hit:
+                by_field[field] = hit
+                break
+
+    out: dict = {}
+    for idx, label in enumerate(labels):
+        period = {f: vals[idx] for f, vals in by_field.items() if idx < len(vals)}
+        if period:
+            out[label] = period
+    return out
+
+
 def _match_type(text: str, require_density: bool = True) -> Optional[str]:
     """
     Which statement type this page is, or None.
@@ -200,12 +317,18 @@ def locate_statement_pages(pdf_bytes: bytes) -> dict:
         log.info("locate: pdf open failed", error=str(e)[:80])
         return found
 
+    # page index -> 'statement' | 'summary', so a caller can tell an audited
+    # statement from a multi-year highlights page without re-reading the page.
+    page_types: dict = {}
+
     def _record(idx: int, text: str) -> None:
         st = _match_type(text)
         if st:
             found.setdefault(st, [])
             if idx not in found[st]:
                 found[st].append(idx)
+            if st in ("balance_sheet", "income"):
+                page_types[idx] = classify_page(text)[0]
 
     for i, t in text_pages.items():
         _record(i, t)
@@ -216,8 +339,16 @@ def locate_statement_pages(pdf_bytes: bytes) -> dict:
     # every remaining page of a 176-page report (measured 100s on ABOT) purely
     # because that one title never matched. The whole point of this pass is to be
     # cheap, so it is also hard-capped.
+    # A summary match is useful but must NOT end the search: ABOT's "Six Years at
+    # a Glance" page matches the same title pattern as the real statement, and
+    # stopping there would forfeit the granular lines Section 2 needs. The pass
+    # therefore continues until an actual 2-column STATEMENT balance sheet is
+    # found, or the budget runs out.
     def _have_financials() -> bool:
-        return all(k in found for k in ("balance_sheet", "income", "cashflow"))
+        if not all(k in found for k in ("balance_sheet", "income", "cashflow")):
+            return False
+        return any(page_types.get(p) == "statement"
+                   for p in found.get("balance_sheet", []))
 
     if blank_pages and not _have_financials():
         try:
@@ -241,6 +372,7 @@ def locate_statement_pages(pdf_bytes: bytes) -> dict:
         except Exception as e:
             log.info("locate: OCR pass unavailable", error=str(e)[:80])
 
+    found["_page_types"] = page_types
     return found
 
 
@@ -436,57 +568,139 @@ def _reconciles(d: dict) -> tuple:
     return diff <= RECONCILE_TOLERANCE, f"difference {diff * 100:.2f}%"
 
 
-def extract_statements(pdf_bytes: bytes, ticker: str = "",
-                       preprocess: bool = True) -> dict:
+def merge_periods(statement: dict, summary: dict) -> dict:
     """
-    Full targeted pipeline. Returns a diagnosable result even on failure:
+    Merge audited-statement periods over summary periods.
 
-      {located, ocr_pages, basis, scale, current, prior, reconciled, reason}
+    Precedence rule: for any period present in both, the audited statement wins
+    for every field it carries, and a summary value never overwrites one sourced
+    from a statement. The summary only fills periods, and fields within a period,
+    that the statement does not cover.
+
+    Returns {period: {"fields": {...}, "source_page_type": "statement"|"summary"}}.
     """
-    located = locate_statement_pages(pdf_bytes)
-    bs_pages = located.get("balance_sheet") or []
-    if not bs_pages:
-        return {"located": located, "ocr_pages": [], "current": {}, "prior": {},
-                "reconciled": None,
-                "reason": "no statement of financial position page located"}
+    out: dict = {}
+    for period, fields in (summary or {}).items():
+        out[period] = {"fields": dict(fields), "source_page_type": "summary"}
+    for period, fields in (statement or {}).items():
+        if period in out:
+            merged = dict(out[period]["fields"])
+            merged.update(fields)           # statement wins field by field
+            out[period] = {"fields": merged, "source_page_type": "statement"}
+        else:
+            out[period] = {"fields": dict(fields), "source_page_type": "statement"}
+    return out
 
-    # STEP 4: prefer unconsolidated (standalone) to match the PSX summary basis.
-    chosen, basis = bs_pages, "unknown"
+
+def _pick_basis(pdf_bytes: bytes, pages: list) -> tuple:
+    """Prefer unconsolidated (standalone) to match the PSX summary basis."""
     try:
         import pdfplumber
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
             unconsolidated, consolidated = [], []
-            for p in bs_pages:
+            for p in pages:
                 try:
                     t = (pdf.pages[p].extract_text() or "").lower()
                 except Exception:
                     t = ""
                 (consolidated if _is_consolidated(t) else unconsolidated).append(p)
         if unconsolidated:
-            chosen, basis = unconsolidated, "unconsolidated"
-        elif consolidated:
-            chosen, basis = consolidated, "consolidated"
+            return unconsolidated, "unconsolidated"
+        if consolidated:
+            return consolidated, "consolidated"
     except Exception:
         pass
+    return pages, "unknown"
 
+
+def extract_statements(pdf_bytes: bytes, ticker: str = "",
+                       preprocess: bool = False) -> dict:
+    """
+    Full targeted pipeline, capturing BOTH page types.
+
+    An audited statement gives two periods of granular lines; a multi-year summary
+    ("Six Years at a Glance") gives totals only but across every period it prints.
+    Both are useful and they are not interchangeable, so both are extracted and
+    merged under statement-wins precedence.
+    """
+    located = locate_statement_pages(pdf_bytes)
+    page_types = located.get("_page_types") or {}
+    bs_pages = located.get("balance_sheet") or []
+    if not bs_pages:
+        return {"located": located, "ocr_pages": [], "current": {}, "prior": {},
+                "reconciled": None, "periods": {},
+                "reason": "no statement of financial position page located"}
+
+    stmt_pages = [p for p in bs_pages
+                  if page_types.get(p) not in ("summary", "neither")]
+    summ_pages = [p for p in bs_pages if page_types.get(p) == "summary"]
+
+    chosen, basis = _pick_basis(pdf_bytes, stmt_pages or bs_pages)
     pages = expand_pages(chosen)
     text = ocr_pages(pdf_bytes, pages, preprocess=preprocess)
     if not text.strip():
         return {"located": located, "ocr_pages": pages, "basis": basis,
-                "current": {}, "prior": {}, "reconciled": None,
+                "current": {}, "prior": {}, "reconciled": None, "periods": {},
                 "reason": "targeted OCR produced no text"}
 
-    parsed = parse_two_column(text)
-    current, prior, scale = _scaled(parsed, text)
-    ok, why = _reconciles(current)
+    # Classify authoritatively from the high-quality render, not the cheap pass.
+    page_type, n_cols = classify_page(text)
+
+    statement_periods: dict = {}
+    summary_periods: dict = {}
+    scale = None
+
+    if page_type == "statement":
+        parsed = parse_two_column(text)
+        current, prior, scale = _scaled(parsed, text)
+        ok, why = _reconciles(current)
+        if current:
+            statement_periods["current"] = current
+        if prior:
+            statement_periods["prior"] = prior
+        provenance = {f: h["source_line"] for f, h in parsed.items()}
+    else:
+        # A summary page carries totals only. Its lack of granular lines is the
+        # nature of the page, not an extraction failure.
+        raw_periods = parse_multi_period(text)
+        as_raw = {f: {"raw": v} for f, v in
+                 (next(iter(raw_periods.values()), {}) or {}).items()}
+        header_scale, evidence = detect_scale(text)
+        scale, _ = _choose_scale(as_raw, header_scale, evidence)
+        summary_periods = {p: {f: v * scale for f, v in fields.items()}
+                          for p, fields in raw_periods.items()}
+        current = next(iter(summary_periods.values()), {}) if summary_periods else {}
+        prior = {}
+        ok, why = _reconciles(current)
+        provenance = {}
+
+    # If the statement page did not reconcile, a summary page may still carry a
+    # usable multi-year total set, so extract it too rather than returning nothing.
+    if page_type == "statement" and summ_pages and ok is not True:
+        try:
+            s_text = ocr_pages(pdf_bytes, expand_pages(summ_pages[:1], span=0),
+                              preprocess=preprocess)
+            raw_periods = parse_multi_period(s_text)
+            if raw_periods:
+                as_raw = {f: {"raw": v} for f, v in
+                         next(iter(raw_periods.values())).items()}
+                hs, ev = detect_scale(s_text)
+                s_scale, _ = _choose_scale(as_raw, hs, ev)
+                summary_periods = {p: {f: v * s_scale for f, v in fields.items()}
+                                  for p, fields in raw_periods.items()}
+        except Exception as e:
+            log.info("summary page extraction skipped", ticker=ticker,
+                     error=str(e)[:70])
 
     if ok is not True:
-        # Log what WAS extracted so a failure is diagnosable rather than silent.
         log.info("targeted extraction did not reconcile", ticker=ticker,
-                 reason=why, basis=basis, pages=pages,
+                 reason=why, basis=basis, pages=pages, page_type=page_type,
                  fields={k: round(v) for k, v in current.items()})
 
     return {"located": located, "ocr_pages": pages, "basis": basis, "scale": scale,
-            "current": current, "prior": prior, "reconciled": ok, "reason": why,
-            "provenance": {f: h["source_line"] for f, h in parsed.items()},
+            "page_type": page_type, "n_columns": n_cols,
+            "current": current, "prior": prior,
+            "summary_periods": summary_periods,
+            "periods": merge_periods(statement_periods, summary_periods),
+            "reconciled": ok, "reason": why, "provenance": provenance,
             "text_chars": len(text)}

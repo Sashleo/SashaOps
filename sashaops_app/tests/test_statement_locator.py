@@ -215,3 +215,97 @@ def test_asset_split_must_rebuild_the_total():
                           "non_current_assets": 1_000_000_000})
     assert ok is False
     assert "rebuild" in why
+
+
+# ── Page classification: summary vs audited statement ─────────────────────────
+
+from intelligence.statement_locator import (  # noqa: E402
+    classify_page, count_money_columns, parse_multi_period, merge_periods,
+    extract_period_labels, SUMMARY_MIN_COLUMNS,
+)
+
+# ABOT page 77, verbatim from the raw OCR dump. Six periods per row, so it is the
+# "Six Years at a Glance" summary, NOT the statement of financial position -
+# though it matches the same title pattern.
+_ABOT_SUMMARY = """Statement of Financial Position
+2025 2024 2023 2022 2021 2020
+Current Assets 30,993 23,262 23,199 21,829 18,432 15,703
+Total Assets 46,816 37,651 36,693 33,920 28,567 24,916
+Total Equity 31,625 23,725 18,237 17,106 17,354 15,590
+Current Liabilities 13,376 11,660 16,835 14,607 9,343 6,834
+Total Liabilities 15,191 13,926 18,456 16,814 11,213 9,326
+"""
+
+_TWO_COLUMN = """Statement of Financial Position
+Total assets 5,000,000 4,400,000
+Total equity 3,000,000 2,700,000
+Total liabilities 2,000,000 1,700,000
+Current assets 1,500,000 1,200,000
+Current liabilities 900,000 800,000
+"""
+
+
+def test_six_column_page_classifies_as_summary():
+    kind, n = classify_page(_ABOT_SUMMARY)
+    assert kind == "summary"
+    assert n == 6
+
+
+def test_two_column_page_classifies_as_statement():
+    kind, n = classify_page(_TWO_COLUMN)
+    assert kind == "statement"
+    assert n == 2
+
+
+def test_page_with_no_money_columns_is_neither():
+    # ABOT page 89 is a bar chart whose only numbers are axis percentages.
+    kind, n = classify_page("Hi Total Equity Non-Current Liabilities 63.0 64.5 61.8")
+    assert kind == "neither"
+    assert n == 0
+
+
+def test_summary_yields_every_period_not_just_two():
+    per = parse_multi_period(_ABOT_SUMMARY)
+    assert list(per.keys()) == ["2025", "2024", "2023", "2022", "2021", "2020"]
+    assert per["2025"]["total_assets"] == 46_816
+    assert per["2020"]["total_assets"] == 24_916
+    assert per["2023"]["current_liabilities"] == 16_835
+
+
+def test_period_labels_read_from_the_header_row():
+    assert extract_period_labels(_ABOT_SUMMARY, 6)[:3] == ["2025", "2024", "2023"]
+
+
+def test_period_labels_inferred_when_no_header_row():
+    text = "Total Assets 100,000 90,000 80,000\n"
+    assert extract_period_labels(text, 3, latest_year=2025) == ["2025", "2024", "2023"]
+
+
+def test_two_column_page_is_not_parsed_as_a_summary():
+    assert parse_multi_period(_TWO_COLUMN) == {}
+
+
+def test_summary_threshold_is_three_columns():
+    assert SUMMARY_MIN_COLUMNS == 3
+
+
+# ── Merge precedence: audited statement always wins ───────────────────────────
+
+def test_statement_wins_over_summary_for_a_shared_period():
+    merged = merge_periods(
+        {"2025": {"total_assets": 46_816_000_000, "inventory": 5_000_000_000}},
+        {"2025": {"total_assets": 1, "total_equity": 31_625_000_000}})
+    assert merged["2025"]["source_page_type"] == "statement"
+    assert merged["2025"]["fields"]["total_assets"] == 46_816_000_000
+    # The summary still fills a field the statement did not carry.
+    assert merged["2025"]["fields"]["total_equity"] == 31_625_000_000
+    # And a statement-only field survives.
+    assert merged["2025"]["fields"]["inventory"] == 5_000_000_000
+
+
+def test_summary_fills_periods_the_statement_does_not_cover():
+    merged = merge_periods({"2025": {"total_assets": 1_000}},
+                          {"2025": {"total_assets": 9}, "2021": {"total_assets": 500}})
+    assert merged["2025"]["source_page_type"] == "statement"
+    assert merged["2021"]["source_page_type"] == "summary"
+    assert merged["2021"]["fields"]["total_assets"] == 500
