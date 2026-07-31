@@ -74,7 +74,21 @@ def _normalize_numbers(line: str) -> str:
     # join "digits <space> ,digits" and "digits, <space> digits"
     s = re.sub(r"(\d)\s+(,\d{3})", r"\1\2", s)
     s = re.sub(r"(\d,)\s+(\d{3})", r"\1\2", s)
-    s = re.sub(r"(\d)\s+(\d{3}\b)", r"\1\2", s)   # "3,441 959,708" style
+    # DELIBERATELY NOT joining groups separated by a plain space.
+    #
+    # "3,441 959,708" (one number split by OCR) and "488,615 410,798" (two adjacent
+    # COLUMNS of a statement) are structurally identical; nothing in the text
+    # distinguishes them. The old rule, (\d)\s+(\d{3}\b), resolved that ambiguity
+    # the wrong way round: verified on ABOT page 88 it turned
+    # "Total Assets 46,816 100.0 37,651" into "46,816100.0 37,651100.0", and on a
+    # bank's "NET ASSETS 488,615 410,798" it produced 488,615,410,798 - a
+    # thousand-fold overstatement built from two unrelated columns.
+    #
+    # Multi-column statements are the normal case and a split number is rare OCR
+    # noise, so the ambiguous repair loses: gluing columns corrupts every statement
+    # it touches, while declining to repair merely leaves one rare value unread.
+    # The unambiguous form, where the space precedes a comma ("3,441 ,959,708"), is
+    # still repaired by the rule above.
     # periods-as-thousands: 2+ groups of exactly 3 digits separated by '.'
     def _fix_periods(m):
         return m.group(0).replace(".", ",")
@@ -164,6 +178,7 @@ _FIELDS = {
         # HBL. "Net assets per share/value" is a per-unit ratio, not the total - block it.
         ("high",   r"^\s*net\s+assets\b(?!\s*(?:per|value|attributable|/\s*share))"),
         ("medium", r"^\s*(?:total\s+)?(?:share\s+capital\s+and\s+reserves|capital\s+and\s+reserves)\b"),
+        ("medium", r"^\s*(?:total\s+)?owners'?\s+equity\b"),
         ("medium", r"^\s*(?:total\s+)?equity\s+attributable\s+to\s+(?:the\s+)?(?:owners|equity\s+holders|shareholders)"),
     ],
     "current_liabilities": [
@@ -216,7 +231,13 @@ _MUST_BE_POSITIVE = {
 # total assets to 3.3 QUADRILLION when the figures were already actual rupees.
 _PLAUSIBLE = {
     "revenue":             (1e6, 5e12),
-    "total_assets":        (1e6, 2e13),
+    # A PSX-listed company with total assets under 100mn PKR is not plausible.
+    # This floor is load-bearing for SCALE SELECTION, not just rejection: ABOT
+    # prints in millions, so scale 1000 gave total assets of 46.8mn and scale 1e6
+    # gave 46.8bn. Both cleared a 1e6 floor, the tie broke to the smaller scale,
+    # and every figure came out 1000x light. Raising the floor eliminates the
+    # wrong scale outright rather than leaving it to a tie-break.
+    "total_assets":        (1e8, 2e13),
     "current_assets":      (1e5, 5e12),
     "current_liabilities": (1e5, 5e12),
     "total_liabilities":   (1e5, 2e13),

@@ -164,3 +164,21 @@ def test_every_value_carries_provenance():
     for key in ("raw", "scale", "column", "all_columns", "source_line", "confidence"):
         assert key in h, f"missing provenance field: {key}"
     assert h["all_columns"][:2] == [3685142.0, 3370394.0]
+
+
+def test_adjacent_columns_are_not_glued_together():
+    # ABOT page 88: "Total Assets 46,816 100.0 37,651" became "46,816100.0
+    # 37,651100.0" because a split-number repair rule fired between COLUMNS.
+    # Multi-column statements are the normal case, so the repair must not.
+    out = _normalize_numbers("Total Assets 46,816 100.0 37,651 100.0")
+    assert "46,816100" not in out
+    assert "46,816" in out and "37,651" in out
+
+
+def test_space_separated_columns_are_never_merged_into_one_number():
+    # "488,615 410,798" (two columns) is structurally identical to a number split
+    # by OCR, so the ambiguous repair is declined rather than guessed. Merging them
+    # produced 488,615,410,798 - a thousand-fold overstatement from unrelated cells.
+    out = _normalize_numbers("NET ASSETS 488,615 410,798")
+    assert "488,615,410,798" not in out
+    assert "488,615" in out and "410,798" in out

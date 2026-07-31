@@ -137,20 +137,20 @@ def test_prior_is_none_when_only_one_column_present():
 # ── Reconciliation gate ───────────────────────────────────────────────────────
 
 def test_balanced_statement_reconciles():
-    ok, why = _reconciles({"total_assets": 5_000_000, "total_equity": 3_000_000,
-                          "total_liabilities": 2_000_000})
+    ok, why = _reconciles({"total_assets": 5_000_000_000, "total_equity": 3_000_000_000,
+                          "total_liabilities": 2_000_000_000})
     assert ok is True
 
 
 def test_unbalanced_statement_is_rejected():
-    ok, why = _reconciles({"total_assets": 5_000_000, "total_equity": 3_000_000,
-                          "total_liabilities": 1_000_000})
+    ok, why = _reconciles({"total_assets": 5_000_000_000, "total_equity": 3_000_000_000,
+                          "total_liabilities": 1_000_000_000})
     assert ok is False
     assert "%" in why
 
 
 def test_incomplete_statement_is_neither_pass_nor_fail_and_names_the_gap():
-    ok, why = _reconciles({"total_assets": 5_000_000})
+    ok, why = _reconciles({"total_assets": 5_000_000_000})
     assert ok is None
     assert "total_equity" in why and "total_liabilities" in why
 
@@ -158,8 +158,8 @@ def test_incomplete_statement_is_neither_pass_nor_fail_and_names_the_gap():
 def test_tolerance_is_half_a_percent():
     assert RECONCILE_TOLERANCE == 0.005
     # Just inside tolerance passes; a larger gap does not.
-    ok, _ = _reconciles({"total_assets": 1_000_000, "total_equity": 600_000,
-                        "total_liabilities": 396_000})
+    ok, _ = _reconciles({"total_assets": 1_000_000_000, "total_equity": 600_000_000,
+                        "total_liabilities": 396_000_000})
     assert ok is True
 
 
@@ -176,15 +176,42 @@ def test_subtotal_exceeding_its_total_is_rejected_even_when_the_identity_holds()
 
 
 def test_current_liabilities_exceeding_total_liabilities_is_rejected():
-    ok, why = _reconciles({"total_assets": 5_000_000, "total_equity": 3_000_000,
-                          "total_liabilities": 2_000_000,
-                          "current_liabilities": 2_500_000})
+    ok, why = _reconciles({"total_assets": 5_000_000_000, "total_equity": 3_000_000_000,
+                          "total_liabilities": 2_000_000_000,
+                          "current_liabilities": 2_500_000_000})
     assert ok is False
     assert "inconsistent scales" in why
 
 
 def test_coherent_statement_still_reconciles():
-    ok, _ = _reconciles({"total_assets": 5_000_000, "total_equity": 3_000_000,
-                        "total_liabilities": 2_000_000, "current_assets": 1_500_000,
-                        "current_liabilities": 900_000})
+    ok, _ = _reconciles({"total_assets": 5_000_000_000, "total_equity": 3_000_000_000,
+                        "total_liabilities": 2_000_000_000, "current_assets": 1_500_000_000,
+                        "current_liabilities": 900_000_000})
     assert ok is True
+
+
+def test_total_assets_below_the_listed_company_floor_is_rejected():
+    # ABOT's statement prints in millions. Scaled as thousands it gave total
+    # assets of 46.8mn, which no listed company has - the floor catches the
+    # misread unit scale on its own.
+    ok, why = _reconciles({"total_assets": 46_816_000, "total_equity": 31_625_000,
+                          "total_liabilities": 15_191_000})
+    assert ok is False
+    assert "floor" in why
+
+
+def test_non_positive_equity_is_rejected():
+    ok, why = _reconciles({"total_assets": 5_000_000_000, "total_equity": -1,
+                          "total_liabilities": 5_000_000_001})
+    assert ok is False
+    assert "not positive" in why
+
+
+def test_asset_split_must_rebuild_the_total():
+    ok, why = _reconciles({"total_assets": 5_000_000_000,
+                          "total_equity": 3_000_000_000,
+                          "total_liabilities": 2_000_000_000,
+                          "current_assets": 1_000_000_000,
+                          "non_current_assets": 1_000_000_000})
+    assert ok is False
+    assert "rebuild" in why

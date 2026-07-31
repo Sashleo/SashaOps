@@ -70,6 +70,9 @@ MAX_LOCATE_OCR_PAGES = 120
 # 600 page objects to confirm what the first 25 already showed is pure cost.
 _TEXT_PROBE_PAGES = 25
 RECONCILE_TOLERANCE = 0.005   # 0.5%
+# No PSX-listed company has total assets below this. Used as an order-of-magnitude
+# gate on a misread unit scale, not as a judgement about company size.
+MIN_TOTAL_ASSETS_PKR = 100_000_000
 
 # A title line is short. Requiring that avoids matching a contents-page entry or a
 # cross-reference sentence in the notes ("see the statement of financial position
@@ -388,6 +391,30 @@ def _coherent(d: dict) -> Optional[str]:
     if tl and cl is not None and abs(cl) > abs(tl):
         return (f"current_liabilities ({cl:,.0f}) exceeds total_liabilities "
                f"({tl:,.0f}); lines were read at inconsistent scales")
+
+    # Order-of-magnitude floor. A PSX-listed company with total assets under
+    # 100mn PKR does not exist; such a value means the statement's unit scale was
+    # misread. ABOT's 46.8mn (printed in millions, scaled as thousands) is caught
+    # by this rule alone.
+    if ta is not None and abs(ta) < MIN_TOTAL_ASSETS_PKR:
+        return (f"total_assets ({ta:,.0f} PKR) is below the {MIN_TOTAL_ASSETS_PKR:,.0f} "
+               f"floor for a listed company; the unit scale was misread")
+
+    # A going concern has positive equity. Negative equity is real but rare, and
+    # far more often signals that the equity line was misread, so it is rejected
+    # here rather than silently feeding leverage and Altman.
+    te = d.get("total_equity")
+    if te is not None and te <= 0:
+        return f"total_equity ({te:,.0f}) is not positive; the equity line is suspect"
+
+    # Current + non-current assets should rebuild total assets within 1%.
+    nca = d.get("non_current_assets")
+    ca = d.get("current_assets")
+    if ta and ca is not None and nca is not None:
+        drift = abs((ca + nca) - ta) / abs(ta)
+        if drift > 0.01:
+            return (f"current_assets + non_current_assets ({ca + nca:,.0f}) does not "
+                   f"rebuild total_assets ({ta:,.0f}), off by {drift * 100:.1f}%")
     return None
 
 
