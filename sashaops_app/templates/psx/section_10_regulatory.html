@@ -1,0 +1,74 @@
+{% import "psx/_macros.html" as m %}
+{{ m.section_head(n, title, note) }}
+
+{% set c = a.compliance %}
+{% if not c %}
+  {{ m.requirements(a, 'regulatory') }}
+{% else %}
+<div style="display:flex; flex-wrap:wrap; gap:6px 24px; font-size:0.85em">
+  <div><span style="color:var(--text-muted)">Primary regulator:</span>
+    <span style="color:var(--text-secondary)">{{ c.get('primary_regulator') or c.get('regulator') or 'Required: regulator mapping' }}</span></div>
+  {% if c.get('sector') %}
+  <div><span style="color:var(--text-muted)">Rule set:</span>
+    <span style="color:var(--text-secondary)">{{ c.get('sector') }}</span></div>
+  {% endif %}
+</div>
+
+{% for key, heading in [('governing_laws', 'Governing laws'),
+                        ('compliance_checklist', 'Compliance checklist'),
+                        ('key_risks', 'Key regulatory risks'),
+                        ('regulatory_risks', 'Key regulatory risks')] %}
+  {% set items = c.get(key) %}
+  {% if items %}
+  <div style="margin-top:12px">
+    <div style="font-size:0.72em; color:var(--text-dim); text-transform:uppercase;
+                letter-spacing:1.2px; margin-bottom:4px">{{ heading }}</div>
+    {% for it in items %}
+    <div style="font-size:0.84em; color:var(--text-secondary); padding:3px 0;
+                border-bottom:1px solid var(--bg-2)">
+      {%- if it is mapping -%}{{ it.get('requirement') or it.get('name') or it.get('text') or it }}
+      {%- else -%}{{ it }}{%- endif -%}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endfor %}
+
+{# Regulated financial metrics: show the requirement even when uncomputed. #}
+{% if a.is_bank %}
+<div style="margin-top:14px">
+  <div style="font-size:0.72em; color:var(--text-dim); text-transform:uppercase;
+              letter-spacing:1.2px; margin-bottom:4px">Regulated financial metrics</div>
+  <table style="width:100%; font-size:0.84em; border-collapse:collapse">
+    <tr style="color:var(--text-dim); border-bottom:1px solid var(--bg-2); text-align:right">
+      <th style="text-align:left; padding:5px 8px">Metric</th>
+      <th style="padding:5px 8px">Regulatory reference</th>
+      <th style="padding:5px 8px">Computed</th>
+      <th style="padding:5px 8px">Status</th>
+    </tr>
+    {% for label, ref in [('Capital Adequacy Ratio', 'minimum 10.0%'),
+                          ('Advance to Deposit Ratio', 'tax threshold 50.0%'),
+                          ('Non-performing loan ratio', 'monitored by SBP')] %}
+    <tr style="border-bottom:1px solid var(--bg-2); text-align:right">
+      <td style="text-align:left; padding:5px 8px; color:var(--text-secondary)">{{ label }}</td>
+      <td style="padding:5px 8px; color:var(--text-muted)">{{ ref }}</td>
+      <td style="padding:5px 8px; color:var(--text-muted); font-size:0.9em">uncomputed</td>
+      <td style="padding:5px 8px; color:#f59e0b; font-size:0.9em">Required: regulatory
+        return detail (risk-weighted assets, advances, deposits)</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div style="font-size:0.76em; color:var(--text-dim); margin-top:6px">
+    These are reported in the regulatory returns and the annual report's capital
+    adequacy note, not in the PSX summary table, so they are listed as uncomputed
+    rather than omitted.
+  </div>
+</div>
+{% endif %}
+
+{{ m.requirements(a, 'regulatory') }}
+<div style="font-size:0.74em; color:var(--text-dim); margin-top:10px;
+            padding-top:8px; border-top:1px solid var(--bg-2)">
+  Source: Static compliance rules, Pakistan. No AI, no external call.
+</div>
+{% endif %}

@@ -1,0 +1,57 @@
+{% import "psx/_macros.html" as m %}
+{{ m.section_head(n, title, note) }}
+
+{% set q = a.statement_quality %}
+{% if not q.get('available') %}
+<div style="font-size:0.85em; color:#f59e0b">
+  Required: audit report text.
+  {%- if a.source_document_type in ('annual_report', 'annual_results') %}
+    An annual document was located for {{ a.ticker }}
+    ({{ a.source_document_pages }} pages, {{ a.source_document_date }}) but it did
+    not yield a readable auditor's report, so statement quality cannot be assessed.
+  {%- elif a.source_document_type == 'interim' %}
+    The latest filing on PSX for {{ a.ticker }} is an interim report
+    ({{ a.source_document_pages }} pages), which is reviewed rather than audited
+    and carries no auditor's opinion.
+  {%- else %}
+    The annual report PDF for {{ a.ticker }} did not yield a readable auditor's
+    report. Statement quality assessment unavailable.
+  {%- endif %}
+</div>
+<div style="font-size:0.8em; color:var(--text-muted); margin-top:8px; line-height:1.5">
+  This section is deliberately not inferred. A qualified opinion or a going-concern
+  paragraph is a material finding, and reporting one that was not actually read
+  from the auditor's report would be worse than reporting nothing.
+</div>
+{% else %}
+<table style="width:100%; font-size:0.85em; border-collapse:collapse">
+  {% for label, key in [('Auditor', 'auditor'),
+                        ('Opinion type', 'opinion'),
+                        ('Going concern paragraph', 'going_concern'),
+                        ('Emphasis of matter', 'emphasis_of_matter'),
+                        ('Related party transactions disclosed', 'related_party'),
+                        ('Contingent liabilities noted', 'contingent_liabilities'),
+                        ('Extraction method', 'method'),
+                        ('Extraction confidence', 'confidence')] %}
+  <tr style="border-bottom:1px solid var(--bg-2)">
+    <td style="padding:5px 8px; color:var(--text-muted)">{{ label }}</td>
+    <td style="padding:5px 8px; text-align:right; color:var(--text-secondary)">
+      {%- set v = q.get(key) -%}
+      {%- if v is none -%}<span style="color:var(--text-muted)">Required: {{ label|lower }}</span>
+      {%- elif v is sameas true -%}yes
+      {%- elif v is sameas false -%}no
+      {%- else -%}{{ v }}{%- endif -%}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% if q.get('opinion') and 'unqualified' not in (q.get('opinion')|lower) %}
+<div style="margin-top:10px; border-left:3px solid #f87171; padding:8px 12px;
+            background:var(--bg-3); font-size:0.85em; color:#f87171">
+  The auditor's opinion is {{ q.get('opinion') }}. This is a material finding and
+  is carried into Section 12 as a risk.
+</div>
+{% endif %}
+{% endif %}
+
+{{ m.requirements(a, 'statement_quality') }}
+{{ m.source_line(a, 'balance_sheet') }}

@@ -1,0 +1,92 @@
+{% import "psx/_macros.html" as m %}
+{{ m.section_head(n, title, note) }}
+
+{% set v = a.valuation %}
+{% set latest = a.latest_period %}
+{% set R = a.ratios.get(latest, {}) if latest else {} %}
+
+{% if a.is_bank %}
+<div style="font-size:0.8em; color:var(--text-secondary); margin-bottom:10px">
+  Valuation: multiples basis (banking)
+</div>
+<div style="font-size:0.82em; color:var(--text-muted); margin-bottom:12px; line-height:1.5">
+  {{ v.get('reason') }}
+</div>
+{% else %}
+<div style="font-size:0.8em; color:var(--text-secondary); margin-bottom:10px">
+  Valuation: multiples basis
+</div>
+{# Track C STATE 1: a real valuation with its limitation stated, never an empty
+   section and never a partial DCF presented as if complete. #}
+<div style="font-size:0.82em; color:var(--text-muted); margin-bottom:12px; line-height:1.5">
+  Discounted cash flow requires capital expenditure data from the statement of
+  cash flows, which is not available in the current filing for this company.
+  Valuation is presented on a multiples basis against listed sector peers.
+</div>
+{% endif %}
+
+<table style="width:100%; font-size:0.84em; border-collapse:collapse">
+  <tr style="color:var(--text-dim); border-bottom:1px solid var(--bg-2); text-align:right">
+    <th style="text-align:left; padding:5px 8px">Multiple</th>
+    <th style="padding:5px 8px">{{ a.ticker }}</th>
+    <th style="padding:5px 8px">Sector median</th>
+    <th style="padding:5px 8px">Implied value per share</th>
+  </tr>
+  {% set pe_med = a.sector_medians.get('pe') %}
+  <tr style="border-bottom:1px solid var(--bg-2); text-align:right">
+    <td style="text-align:left; padding:5px 8px; color:var(--text-secondary)">
+      Price to earnings<div style="font-size:0.78em; color:var(--text-dim)">Price / EPS</div></td>
+    <td style="padding:5px 8px; font-family:var(--font-mono)">{{ m.metric(R.get('pe'), 'x') }}</td>
+    <td style="padding:5px 8px; font-family:var(--font-mono); color:var(--text-muted)">
+      {%- if pe_med and pe_med.median is not none -%}{{ '{:,.2f}'.format(pe_med.median) }}x
+      <div style="font-size:0.75em; color:var(--text-dim)">n={{ pe_med.company_count }}</div>
+      {%- else -%}<span style="font-size:0.85em">no median</span>{%- endif -%}</td>
+    <td style="padding:5px 8px; font-family:var(--font-mono)">
+      {%- set eps = (R.get('eps') or {}).get('value') -%}
+      {%- if eps and pe_med and pe_med.median is not none -%}
+        PKR {{ '{:,.2f}'.format(eps * pe_med.median) }}
+      {%- else -%}<span style="color:var(--text-muted); font-size:0.85em">Required: EPS and a sector median</span>{%- endif -%}</td>
+  </tr>
+  <tr style="border-bottom:1px solid var(--bg-2); text-align:right">
+    <td style="text-align:left; padding:5px 8px; color:var(--text-secondary)">
+      Price to book<div style="font-size:0.78em; color:var(--text-dim)">Price / book value per share</div></td>
+    <td style="padding:5px 8px; font-family:var(--font-mono)">{{ m.metric(v.get('pb'), 'x') }}</td>
+    <td style="padding:5px 8px; color:var(--text-muted); font-size:0.85em">no median</td>
+    <td style="padding:5px 8px; color:var(--text-muted); font-size:0.85em">
+      Required: book value per share</td>
+  </tr>
+</table>
+
+<div style="margin-top:12px; font-size:0.85em">
+  <span style="color:var(--text-muted)">Current price:</span>
+  <span style="font-family:var(--font-mono)">
+    {%- if a.current_price is not none -%}PKR {{ '{:,.2f}'.format(a.current_price) }}
+    {%- else -%}Required: price data{%- endif -%}</span>
+</div>
+
+{% set c8 = a.charts.get('chart8') %}
+{% if c8 and c8.renderable %}
+<div style="margin-top:16px">
+  <div style="font-size:0.82em; color:var(--text-secondary)">{{ c8.title }}</div>
+  <canvas id="chart8-{{ a.ticker }}" height="200"
+          data-sashaops-chart="{{ c8.spec_json|e }}"></canvas>
+  <div style="font-size:0.74em; color:var(--text-dim)">{{ c8.source }}</div>
+  <div style="font-size:0.74em; color:var(--text-dim)">
+    Debt to equity is unavailable until balance-sheet data is extracted, so revenue
+    growth is the default x axis.
+  </div>
+</div>
+{% elif c8 %}
+<div style="font-size:0.8em; color:var(--text-muted); margin-top:12px">{{ c8.reason }}</div>
+{% endif %}
+
+{% if not a.is_bank %}
+<div style="font-size:0.76em; color:var(--text-dim); margin-top:12px">
+  Enterprise multiples (EV/EBITDA, EV/Revenue) require net debt, which needs
+  balance-sheet data. They are omitted rather than computed from an incomplete
+  capital structure.
+</div>
+{% endif %}
+
+{{ m.requirements(a, 'valuation') }}
+{{ m.source_line(a, 'market') }}

@@ -94,6 +94,11 @@ _FIN_COLS = (
     "interest_expense", "depreciation", "ocf", "capex",
 )
 
+# Track B document provenance. Kept separate from _FIN_COLS because these are text
+# and integer metadata, not numeric metrics, and _fin_value() coerces to float.
+_DOC_COLS = ("source_document_type", "source_document_pages",
+             "source_document_url", "source_document_date")
+
 # The analysis dict uses slightly different key names than the DB columns.
 _FIN_ALIASES = {"total_equity": "shareholders_equity"}
 
@@ -110,10 +115,12 @@ def upsert_psx_financials(symbol: str, period: str, period_type: str,
                           metrics: dict, raw: Optional[dict] = None) -> None:
     """Insert/update one financial period row for a company."""
     db = get_db()
-    cols = ["symbol", "period", "period_type", *_FIN_COLS, "raw_json", "fetched_at"]
+    cols = ["symbol", "period", "period_type", *_FIN_COLS, *_DOC_COLS,
+            "raw_json", "fetched_at"]
     vals = [
         symbol.upper(), period, period_type,
         *[_fin_value(metrics, c) for c in _FIN_COLS],
+        *[metrics.get(c) for c in _DOC_COLS],
         json.dumps(raw) if raw is not None else None,
         _now(),
     ]
@@ -124,7 +131,7 @@ def upsert_psx_financials(symbol: str, period: str, period_type: str,
     # balance-sheet fields a previous per-ticker run had extracted from the PDF -
     # observed wiping BFBIO's ebit/inventory/receivables/payables and dropping its
     # validated ratio count from 9 to 4. Richer data now survives a thinner refresh.
-    updates = ",".join(f"{c}=COALESCE(excluded.{c}, {c})" for c in _FIN_COLS)
+    updates = ",".join(f"{c}=COALESCE(excluded.{c}, {c})" for c in (*_FIN_COLS, *_DOC_COLS))
     updates += ",raw_json=COALESCE(excluded.raw_json, raw_json),fetched_at=excluded.fetched_at"
     db.execute(
         f"""INSERT INTO psx_financials ({",".join(cols)})

@@ -1,0 +1,104 @@
+{% import "psx/_macros.html" as m %}
+{{ m.section_head(n, title, note) }}
+
+{% set periods = a.annual_periods[:4] %}
+{% set latest = a.latest_period %}
+{% set prior = periods[1] if periods|length > 1 else None %}
+{% set B = a.balance_sheet.get(latest, {}) if latest else {} %}
+{% set has_any = B.get('total_assets') is not none or B.get('total_equity') is not none %}
+
+{% if not has_any %}
+<div style="font-size:0.85em; color:#f59e0b">
+  Required: annual report.
+  {%- if a.source_document_type == 'interim' %}
+    The most recent financial filing available on PSX for {{ a.ticker }} is an
+    interim report{% if a.source_document_pages %} ({{ a.source_document_pages }} pages{% if a.source_document_date %}, {{ a.source_document_date }}{% endif %}){% endif %},
+    which does not include a full statement of financial position.
+  {%- elif a.source_document_type in ('annual_report', 'annual_results') %}
+    An annual document was located for {{ a.ticker }}
+    ({{ a.source_document_pages }} pages, {{ a.source_document_date }}) but it has
+    no extractable text layer, so the statement of financial position must be read
+    by OCR before it can be shown. OCR output is only accepted when the balance
+    sheet reconciles.
+  {%- else %}
+    No annual filing carrying a statement of financial position has been located
+    for {{ a.ticker }}.
+  {%- endif %}
+</div>
+{% else %}
+
+{% set rows = a.is_bank and [
+     ('Cash and balances with treasury banks', 'cash'),
+     ('Advances', 'receivables'),
+     ('TOTAL ASSETS', 'total_assets'),
+     ('Deposits and other accounts', 'total_debt'),
+     ('TOTAL LIABILITIES', 'total_liabilities'),
+     ('TOTAL EQUITY', 'total_equity')] or [
+     ('Stock in trade', 'inventory'),
+     ('Trade receivables', 'receivables'),
+     ('Cash and bank balances', 'cash'),
+     ('Total current assets', 'current_assets'),
+     ('TOTAL ASSETS', 'total_assets'),
+     ('Total equity', 'total_equity'),
+     ('Total current liabilities', 'current_liabilities'),
+     ('TOTAL LIABILITIES', 'total_liabilities')] %}
+
+<div style="overflow-x:auto">
+<table style="width:100%; font-size:0.84em; border-collapse:collapse">
+  <tr style="color:var(--text-dim); border-bottom:1px solid var(--bg-2); text-align:right">
+    <th style="text-align:left; padding:6px 8px">PKR millions</th>
+    {% for p in periods %}<th style="padding:6px 8px">{{ p }}</th>{% endfor %}
+    <th style="padding:6px 8px">% of assets</th>
+    <th style="padding:6px 8px">vs prior</th>
+  </tr>
+  {% for label, key in rows %}
+  {% set cur = B.get(key) %}
+  {% set ta = B.get('total_assets') %}
+  <tr style="border-bottom:1px solid var(--bg-2); text-align:right">
+    <td style="text-align:left; padding:6px 8px; color:var(--text-secondary)">{{ label }}</td>
+    {% for p in periods %}
+    <td style="padding:6px 8px; font-family:var(--font-mono)">
+      {{ m.pkr_mn(a.balance_sheet.get(p, {}).get(key)) }}</td>
+    {% endfor %}
+    <td style="padding:6px 8px; font-family:var(--font-mono); color:var(--text-muted)">
+      {%- if cur is not none and ta -%}{{ '{:,.1f}'.format(cur / ta * 100) }}%
+      {%- else -%}n/a{%- endif -%}</td>
+    <td style="padding:6px 8px; font-size:0.9em">
+      {{ m.direction(cur, a.balance_sheet.get(prior, {}).get(key) if prior else None) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+
+{# Balance check is an honesty signal, especially on OCR-derived figures. #}
+{% set ta = B.get('total_assets') %}
+{% set tl = B.get('total_liabilities') %}
+{% set te = B.get('total_equity') %}
+{% if ta and tl is not none and te is not none %}
+  {% set diff = (ta - (tl + te))|abs %}
+  {% if ta and (diff / ta * 100) > 0.5 %}
+  <div style="margin-top:10px; border-left:3px solid #f59e0b; padding:6px 10px;
+              background:var(--bg-3); font-size:0.82em; color:#f59e0b">
+    Balance sheet does not reconcile (difference
+    {{ '{:,.0f}'.format(diff / 1000000) }} PKR millions,
+    {{ '{:,.2f}'.format(diff / ta * 100) }}% of total assets). Extracted values may
+    be incomplete.
+  </div>
+  {% else %}
+  <div style="margin-top:10px; font-size:0.8em; color:var(--accent)">
+    Balance sheet reconciles: total assets equal total equity and liabilities
+    within 0.5%.
+  </div>
+  {% endif %}
+{% endif %}
+
+{% if a.is_bank %}
+<div style="font-size:0.78em; color:var(--text-dim); margin-top:8px">
+  Banking presentation: advances, investments, deposits and borrowings. Banks do
+  not report a current and non-current split, so one is not imposed here.
+</div>
+{% endif %}
+{% endif %}
+
+{{ m.requirements(a, 'balance_sheet') }}
+{{ m.source_line(a, 'balance_sheet') }}

@@ -1,0 +1,80 @@
+{# psx/_macros.html - shared rendering helpers for the analyser sections.
+
+   Every metric arrives as a ValidatedMetric ({value, status, note}). These macros
+   are the only place that decides how each status is shown, so an implausible
+   value can never leak out as a number anywhere in the UI. #}
+
+{% macro metric(m, kind='ratio', dp=2) -%}
+  {%- if m is none or m.status == 'missing' -%}
+    <span style="color:var(--text-muted); font-size:0.85em">not computed</span>
+  {%- elif m.status == 'implausible' -%}
+    <span style="color:#f59e0b; font-size:0.85em" title="{{ m.note }}">excluded: failed plausibility</span>
+  {%- elif m.value is none -%}
+    <span style="color:var(--text-muted); font-size:0.85em">not computed</span>
+  {%- elif kind == 'pct' -%}
+    {{ '{:,.1f}'.format(m.value * 100) }}%
+  {%- elif kind == 'x' -%}
+    {{ '{:,.2f}'.format(m.value) }}x
+  {%- elif kind == 'days' -%}
+    {{ '{:,.0f}'.format(m.value) }}
+  {%- elif kind == 'pkr' -%}
+    {{ '{:,.0f}'.format(m.value) }}
+  {%- else -%}
+    {{ ('{:,.%df}' % dp).format(m.value) }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro pkr_mn(v) -%}
+  {%- if v is none -%}<span style="color:var(--text-muted); font-size:0.85em">not reported</span>
+  {%- else -%}{{ '{:,.0f}'.format(v / 1000000) }}{%- endif -%}
+{%- endmacro %}
+
+{% macro source_line(a, section) -%}
+  {%- set s = a.data_sources.get(section) -%}
+  <div style="font-size:0.74em; color:var(--text-dim); margin-top:10px;
+              padding-top:8px; border-top:1px solid var(--bg-2)">
+    {%- if s -%}
+      Source: {{ s.source }} · method: {{ s.method }} ·
+      as at: {{ s.as_at or 'timestamp not recorded' }}
+    {%- else -%}
+      Source: computed locally from stored PSX data.
+    {%- endif -%}
+    Computed locally, no AI.
+  </div>
+{%- endmacro %}
+
+{% macro requirements(a, section) -%}
+  {%- set reqs = a.missing_requirements.get(section) -%}
+  {%- if reqs -%}
+  <div style="margin-top:10px; border-left:3px solid #f59e0b; padding:6px 10px;
+              background:var(--bg-3); border-radius:3px">
+    {%- for r in reqs %}
+    <div style="font-size:0.82em; color:#f59e0b">{{ r }}</div>
+    {%- endfor %}
+  </div>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro section_head(n, title, note) -%}
+  <div style="display:flex; align-items:baseline; gap:10px">
+    <span style="font-family:var(--font-mono); color:var(--text-dim)">{{ '%02d'|format(n) }}</span>
+    <span class="card-title" style="margin:0">{{ title }}</span>
+  </div>
+  <div style="font-size:0.78em; color:var(--text-dim); margin:4px 0 12px">{{ note }}</div>
+{%- endmacro %}
+
+{# Direction as text, never as an arrow or colour alone, so it survives the PDF. #}
+{% macro direction(cur, prev) -%}
+  {%- if cur is none or prev is none or prev == 0 -%}
+    <span style="color:var(--text-muted)">n/a</span>
+  {%- else -%}
+    {%- set ch = (cur - prev) / (prev if prev > 0 else -prev) * 100 -%}
+    {%- if ch > 0.5 -%}
+      <span style="color:var(--accent)">UP {{ '{:,.1f}'.format(ch) }}%</span>
+    {%- elif ch < -0.5 -%}
+      <span style="color:#f87171">DOWN {{ '{:,.1f}'.format(-ch) }}%</span>
+    {%- else -%}
+      <span style="color:var(--text-muted)">FLAT</span>
+    {%- endif -%}
+  {%- endif -%}
+{%- endmacro %}

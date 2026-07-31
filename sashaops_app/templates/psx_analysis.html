@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}{{ a.ticker }} - PSX Analyser{% endblock %}
+
+{% block content %}
+{% if not a.found %}
+<div class="page-header"><div class="page-title">{{ a.ticker }}</div></div>
+<div class="card">
+  <div style="font-size:0.9em; color:var(--text-muted)">
+    Required: a listed company matching "{{ a.ticker }}". Not present in
+    psx_companies. <a href="/psx" style="color:var(--accent)">Back to search</a>.
+  </div>
+</div>
+{% else %}
+
+<!-- Header: renders immediately from psx_companies, no section waits on it. -->
+<div class="page-header">
+  <div>
+    <div class="page-title" style="margin-bottom:2px">
+      {{ a.company_name }} <span style="font-family:var(--font-mono); color:var(--text-dim)">({{ a.ticker }})</span>
+    </div>
+    <div style="font-size:0.82em; color:var(--text-muted)">
+      {{ a.sector or 'Sector not classified' }}
+      {%- if a.sub_sector %} · {{ a.sub_sector }}{% endif %} · PSX Listed
+      {%- if a.is_bank %} · banking presentation{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card mb-24">
+  <div style="display:flex; flex-wrap:wrap; gap:24px 40px">
+    <div>
+      <div style="font-size:0.7em; color:var(--text-dim); text-transform:uppercase; letter-spacing:1.2px">Price</div>
+      <div style="font-family:var(--font-mono); font-size:1.05em">
+        {% if a.current_price is not none %}
+          PKR {{ '{:,.2f}'.format(a.current_price) }}
+          {% if a.price_change_pct is not none %}
+          <span style="font-size:0.82em; color:{% if a.price_change_pct < 0 %}#f87171{% else %}var(--accent){% endif %}">
+            {{ '{:+.2f}'.format(a.price_change_pct) }}%
+          </span>
+          {% endif %}
+        {% else %}
+          <span style="font-size:0.8em; color:var(--text-muted)">Required: price data</span>
+        {% endif %}
+      </div>
+    </div>
+    <div>
+      <div style="font-size:0.7em; color:var(--text-dim); text-transform:uppercase; letter-spacing:1.2px">Market cap</div>
+      <div style="font-family:var(--font-mono); font-size:1.05em">
+        {% if a.market_cap %}PKR {{ '{:,.0f}'.format(a.market_cap) }}
+        {% else %}<span style="font-size:0.8em; color:var(--text-muted)">Required: market cap</span>{% endif %}
+      </div>
+    </div>
+    <div>
+      <div style="font-size:0.7em; color:var(--text-dim); text-transform:uppercase; letter-spacing:1.2px">Latest period</div>
+      <div style="font-family:var(--font-mono); font-size:1.05em">
+        {{ a.latest_period or 'Required: annual financials' }}
+        {%- if a.annual_periods|length > 1 %}
+        <span style="font-size:0.78em; color:var(--text-dim)">({{ a.annual_periods|length }} periods)</span>
+        {%- endif %}
+      </div>
+    </div>
+    <div>
+      <div style="font-size:0.7em; color:var(--text-dim); text-transform:uppercase; letter-spacing:1.2px">Health score</div>
+      <div style="font-family:var(--font-mono); font-size:1.05em">
+        {% if a.health_score.score is not none %}
+          {{ a.health_score.score }}/10
+          <span style="font-size:0.78em; color:{% if a.health_score.confidence == 'high' %}var(--accent){% elif a.health_score.confidence == 'moderate' %}#f59e0b{% else %}#f87171{% endif %}">
+            {{ a.health_score.confidence }} confidence
+          </span>
+        {% else %}
+          <span style="font-size:0.8em; color:var(--text-muted)">Not scored</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% if a.health_score.note %}
+  <div style="font-size:0.75em; color:var(--text-dim); margin-top:10px">{{ a.health_score.note }}</div>
+  {% endif %}
+</div>
+
+{% include "psx/_staleness.html" %}
+
+<!-- Sections load independently so the page paints before the slowest one. -->
+{% for n, meta in sections.items() %}
+<div class="card mb-24"
+     id="psx-section-{{ n }}"
+     hx-get="/psx/{{ a.ticker }}/section/{{ n }}"
+     hx-trigger="load"
+     hx-target="#psx-section-{{ n }}"
+     hx-swap="innerHTML">
+  <div style="display:flex; align-items:baseline; gap:10px">
+    <span style="font-family:var(--font-mono); color:var(--text-dim)">{{ '%02d'|format(n) }}</span>
+    <span class="card-title" style="margin:0">{{ meta[0] }}</span>
+  </div>
+  <div style="font-size:0.8em; color:var(--text-dim); margin-top:8px">Loading...</div>
+</div>
+{% endfor %}
+
+<!-- Declared, not silently omitted: sections whose data path is not yet available. -->
+{% if pending_sections %}
+<div class="card">
+  <div class="card-title">Sections awaiting data</div>
+  <div style="font-size:0.82em; color:var(--text-muted); margin-bottom:8px">
+    These are specified in the analyser design but cannot be computed from the
+    filings currently available for this company.
+  </div>
+  {% for n, meta in pending_sections.items() %}
+  <div style="display:flex; gap:10px; align-items:baseline; padding:4px 0;
+              border-bottom:1px solid var(--bg-2); font-size:0.85em">
+    <span style="font-family:var(--font-mono); color:var(--text-dim)">{{ '%02d'|format(n) }}</span>
+    <span style="color:var(--text-secondary); flex:1">{{ meta[0] }}</span>
+    <span style="color:var(--text-dim); font-size:0.9em">Required: {{ meta[1] }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}

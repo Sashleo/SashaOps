@@ -67,5 +67,11 @@ transformers==4.44.2
 sentence-transformers==3.1.1
 statsmodels==0.14.4
 
+# Static chart rendering for exported reports (Phase 3 Task 3.8). The web page
+# uses the vendored Chart.js; this draws the SAME specs server-side so a chart in
+# the PDF cannot disagree with the one on screen. reports/chart_render.py degrades
+# to omitting charts if this is unavailable, so a report still generates.
+matplotlib==3.9.2
+
 # ── Testing ───────────────────────────────────────────────────────────────────
 pytest==8.3.3

@@ -5,5 +5,70 @@
 <div class="page-header">
   <div class="page-title">PSX Analyser</div>
 </div>
-<p style="color:var(--text-muted)">This page will be built in Phase 3.</p>
+
+<div class="card mb-24">
+  <div class="card-title">Find a company</div>
+  <input type="search" name="q" placeholder="Ticker or company name"
+         autocomplete="off"
+         hx-get="/psx/search"
+         hx-trigger="keyup changed delay:200ms, search"
+         hx-target="#psx-search-results"
+         style="width:100%; padding:8px 10px; background:var(--bg-3);
+                border:1px solid var(--bg-2); border-radius:var(--radius);
+                color:var(--text-primary); font-size:0.95em">
+  <div id="psx-search-results"></div>
+</div>
+
+<div class="card">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px">
+    <div class="card-title" style="margin:0">Analysable companies</div>
+    <form method="get" action="/psx" style="margin:0">
+      <select name="sector" onchange="this.form.submit()"
+              style="background:var(--bg-3); border:1px solid var(--bg-2);
+                     border-radius:var(--radius); color:var(--text-secondary);
+                     padding:4px 8px; font-size:0.85em">
+        <option value="">All sectors</option>
+        {% for s in sectors %}
+        <option value="{{ s }}" {% if s == selected_sector %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+
+  {% if recent %}
+  <div style="overflow-x:auto">
+  <table style="width:100%; font-size:0.85em; border-collapse:collapse">
+    <tr style="text-align:left; color:var(--text-dim); border-bottom:1px solid var(--bg-2)">
+      <th style="padding:6px 8px">Ticker</th>
+      <th style="padding:6px 8px">Company</th>
+      <th style="padding:6px 8px">Sector</th>
+      <th style="padding:6px 8px; text-align:right">Periods</th>
+      <th style="padding:6px 8px; text-align:right">Market cap (PKR)</th>
+    </tr>
+    {% for r in recent %}
+    <tr style="border-bottom:1px solid var(--bg-2)">
+      <td style="padding:6px 8px">
+        <a href="/psx/{{ r.symbol }}" style="color:var(--accent); font-family:var(--font-mono)">{{ r.symbol }}</a>
+      </td>
+      <td style="padding:6px 8px; color:var(--text-secondary)">{{ r.company_name }}</td>
+      <td style="padding:6px 8px; color:var(--text-dim)">{{ r.sector_name or 'Not classified' }}</td>
+      <td style="padding:6px 8px; text-align:right; font-family:var(--font-mono)">{{ r.periods }}</td>
+      <td style="padding:6px 8px; text-align:right; font-family:var(--font-mono); color:var(--text-muted)">
+        {{ '{:,.0f}'.format(r.market_cap) if r.market_cap else 'Required: market cap' }}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  <div style="font-size:0.75em; color:var(--text-dim); margin-top:8px">
+    Companies with at least one parsed annual period. Ordered by most recently refreshed.
+  </div>
+  {% else %}
+  <div style="font-size:0.88em; color:var(--text-muted)">
+    Required: parsed annual financials. No company in
+    {{ selected_sector or 'any sector' }} has a stored annual period yet. Run the
+    PSX financials job from the Dashboard Data Health card.
+  </div>
+  {% endif %}
+</div>
 {% endblock %}

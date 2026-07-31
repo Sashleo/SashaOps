@@ -1,0 +1,63 @@
+{% import "psx/_macros.html" as m %}
+{{ m.section_head(n, title, note) }}
+
+{% set d = a.dupont %}
+{% set roe = (d.get('roe') or {}) %}
+{% if roe.status != 'ok' or roe.value is none %}
+  {{ m.requirements(a, 'dupont') }}
+  <div style="font-size:0.8em; color:var(--text-muted); margin-top:8px">
+    ROE is decomposed only when every driver is present. A partial decomposition
+    would attribute returns to components that were not actually measured.
+  </div>
+{% else %}
+<table style="width:100%; font-size:0.85em; border-collapse:collapse">
+  <tr style="color:var(--text-dim); border-bottom:1px solid var(--bg-2); text-align:right">
+    <th style="text-align:left; padding:5px 8px">Component</th>
+    <th style="padding:5px 8px">Value</th>
+    <th style="padding:5px 8px">Sector median</th>
+  </tr>
+  {% for key, label, kind in [('net_margin', 'Net margin', 'pct'),
+                              ('asset_turnover', 'Asset turnover', 'x'),
+                              ('equity_multiplier', 'Equity multiplier', 'x'),
+                              ('roe', 'Return on equity', 'pct')] %}
+  <tr style="border-bottom:1px solid var(--bg-2); text-align:right">
+    <td style="text-align:left; padding:5px 8px; color:var(--text-secondary)">{{ label }}</td>
+    <td style="padding:5px 8px; font-family:var(--font-mono)">{{ m.metric(d.get(key), kind) }}</td>
+    <td style="padding:5px 8px; font-family:var(--font-mono); color:var(--text-muted)">
+      {%- set med = a.sector_medians.get(key) -%}
+      {%- if med and med.median is not none -%}
+        {%- if kind == 'pct' -%}{{ '{:,.1f}'.format(med.median * 100) }}%
+        {%- else -%}{{ '{:,.2f}'.format(med.median) }}x{%- endif -%}
+      {%- else -%}<span style="font-size:0.85em">no median</span>{%- endif -%}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+<div style="font-size:0.78em; color:var(--text-dim); margin-top:6px">
+  ROE = net margin x asset turnover x equity multiplier. The relationship is
+  multiplicative, so components are shown side by side rather than as an additive
+  waterfall.
+</div>
+
+{% if a.dupont_driver %}
+<div style="margin-top:10px; font-size:0.85em; color:var(--text-secondary); line-height:1.5">
+  ROE of {{ '{:,.1f}'.format(roe.value * 100) }}% is driven primarily by
+  {{ a.dupont_driver.name }} ({{ a.dupont_driver.value }}).
+  {{ a.dupont_driver.interpretation }}
+</div>
+{% endif %}
+
+{% set c3 = a.charts.get('chart3') %}
+{% if c3 and c3.renderable %}
+<div style="margin-top:14px">
+  <div style="font-size:0.82em; color:var(--text-secondary)">{{ c3.title }}</div>
+  <canvas id="chart3-{{ a.ticker }}" height="170"
+          data-sashaops-chart="{{ c3.spec_json|e }}"></canvas>
+  <div style="font-size:0.74em; color:var(--text-dim)">{{ c3.source }}</div>
+</div>
+{% elif c3 %}
+<div style="font-size:0.8em; color:var(--text-muted); margin-top:10px">{{ c3.reason }}</div>
+{% endif %}
+{% endif %}
+
+{{ m.source_line(a, 'income_statement') }}

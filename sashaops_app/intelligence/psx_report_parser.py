@@ -166,12 +166,22 @@ def fetch_psx_report_financials(ticker: str) -> Optional[dict]:
     if cached is not None:
         return cached or None   # cached {} means "tried, found nothing"
 
-    url = find_latest_report_url(ticker)
-    if not url:
+    # Track B: choose by document TYPE (annual report > annual results > interim)
+    # and carry that choice forward, so a caller can state exactly why a balance
+    # sheet is missing rather than reporting an unexplained gap.
+    selected = select_report_document(ticker)
+    if not selected:
         _save_cache(ticker, {})
         return None
+    url = selected["url"]
+    doc_meta = {
+        "source_document_type": selected.get("doc_type"),
+        "source_document_pages": selected.get("pages"),
+        "source_document_url": url,
+        "source_document_date": selected.get("date"),
+    }
 
-    pdf_bytes = _download(url, ticker)
+    pdf_bytes = _download_by_url(url)
     if not pdf_bytes:
         _save_cache(ticker, {})
         return None
@@ -182,9 +192,11 @@ def fetch_psx_report_financials(ticker: str) -> Optional[dict]:
     doc = res.get("financials") or {}
     if doc:
         doc["_method"] = res.get("method", "none")
+        doc.update(doc_meta)
         _save_cache(ticker, doc)
         log.info("PSX report parsed", ticker=ticker, fields=sorted(doc.keys()),
-                 method=doc["_method"], url=url)
+                 method=doc["_method"], doc_type=selected.get("doc_type"),
+                 pages=selected.get("pages"), url=url)
         return doc
 
     # Scanned PDF (no text layer): OCR takes minutes and must never block the request
@@ -250,6 +262,148 @@ def _schedule_background_ocr(ticker: str, pdf_bytes: bytes, url: str) -> None:
 
     threading.Thread(target=_worker, name=f"ocr-{ticker}", daemon=True).start()
     log.info("Scanned PDF - OCR scheduled in background", ticker=ticker)
+
+
+ANNUAL_REPORT_PATTERNS = [
+    r"transmission of annual report",
+    r"annual report for the year ended",
+    r"annual audited (financial )?statements",
+    r"annual report \d{4}",
+]
+ANNUAL_RESULTS_PATTERNS = [
+    r"announcement of financial results for the year ended",
+    r"audited financial results for the year",
+    r"financial results for the year ended",
+]
+INTERIM_PATTERNS = [
+    r"quarterly report",
+    r"half year",
+    r"interim",
+    r"period ended (march|june|september)\s*3?0?1?",
+]
+
+# An annual report book is typically 80+ pages. Below this a document claiming to
+# be one is a mislabelled extract, so selection falls through to annual results.
+_ANNUAL_MIN_PAGES = 40
+
+
+def _matches_any(title: str, patterns: list) -> bool:
+    t = (title or "").lower()
+    return any(re.search(p, t) for p in patterns)
+
+
+def _ann_date_key(raw: str):
+    """
+    Sortable key for a PSX announcement date.
+
+    PSX prints dates as "Apr 28, 2026". Sorting those as raw strings is
+    alphabetical, so "Apr 28, 2026" outranks "Mar 6, 2026" and the newest filing
+    within a tier is not actually the newest. Parse to a real date; unparseable
+    values sort last rather than silently winning.
+    """
+    from datetime import datetime
+    for fmt in ("%b %d, %Y", "%B %d, %Y", "%Y-%m-%d", "%d %b %Y"):
+        try:
+            return datetime.strptime((raw or "").strip(), fmt).date()
+        except (ValueError, AttributeError):
+            continue
+    from datetime import date as _date
+    return _date.min
+
+
+def _download_by_url(url: str) -> Optional[bytes]:
+    """
+    Fetch a PDF cached by URL, not by ticker.
+
+    _download() keys its cache on ticker+date, so probing several candidate
+    documents for one ticker would return the FIRST download for every later
+    candidate - silently making page-count verification compare a document against
+    itself. Selection needs per-URL caching.
+    """
+    import hashlib
+    key = hashlib.sha256(url.encode()).hexdigest()[:16]
+    path = CACHE_DIR / f"sel_{key}.pdf"
+    if path.exists():
+        try:
+            return path.read_bytes()
+        except Exception:
+            pass
+    try:
+        import requests
+        r = requests.get(url, headers=HEADERS, timeout=DOWNLOAD_TIMEOUT, verify=False)
+        if r.status_code == 200 and r.content[:4] == b"%PDF":
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(r.content)
+            return r.content
+    except Exception as e:
+        log.info("candidate download failed", url=url[:80], error=str(e)[:80])
+    return None
+
+
+def _pdf_page_count(pdf_bytes: bytes) -> Optional[int]:
+    try:
+        import pdfplumber
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            return len(pdf.pages)
+    except Exception:
+        return None
+
+
+def select_report_document(ticker: str) -> Optional[dict]:
+    """
+    Choose the PSX announcement PDF most likely to carry a full audited Statement
+    of Financial Position, and say WHICH KIND of document was chosen.
+
+    Selection (Phase 3 Track B):
+      1. ANNUAL_REPORT_PATTERNS, most recent first. Verified by page count - an
+         annual report under _ANNUAL_MIN_PAGES pages is a mislabelled extract, so
+         it falls through rather than being trusted.
+      2. ANNUAL_RESULTS_PATTERNS. Shorter, but these carry the audited statement
+         of financial position and often the auditor's report.
+      3. Most recent interim, tagged so callers can state the limitation instead
+         of reporting a generic gap.
+
+    Returns {url, doc_type, pages, date, title} or None. doc_type is one of
+    'annual_report' | 'annual_results' | 'interim'.
+    """
+    try:
+        from intelligence.exchange_crawlers.psx import fetch_psx_company
+        data = fetch_psx_company(ticker, fetch_types=["announcements"])
+    except Exception:
+        return None
+    anns = [a for a in ((data or {}).get("financial_announcements") or []) if a.get("pdf_url")]
+    if not anns:
+        return None
+
+    def _sorted(subset):
+        return sorted(subset, key=lambda a: _ann_date_key(a.get("date", "")), reverse=True)
+
+    def _result(a, doc_type, pages):
+        return {"url": a["pdf_url"], "doc_type": doc_type, "pages": pages,
+                "date": a.get("date"), "title": (a.get("title") or "")[:200]}
+
+    # 1. A real annual report, newest first, page-count verified.
+    for a in _sorted([x for x in anns if _matches_any(x.get("title"), ANNUAL_REPORT_PATTERNS)]):
+        pdf = _download_by_url(a["pdf_url"])
+        pages = _pdf_page_count(pdf) if pdf else None
+        if pages and pages >= _ANNUAL_MIN_PAGES:
+            return _result(a, "annual_report", pages)
+        log.info("Annual-report candidate too short - treating as an extract",
+                 ticker=ticker, pages=pages, title=(a.get("title") or "")[:60])
+
+    # 2. Annual results: audited, carries the balance sheet.
+    for a in _sorted([x for x in anns if _matches_any(x.get("title"), ANNUAL_RESULTS_PATTERNS)]):
+        pdf = _download_by_url(a["pdf_url"])
+        return _result(a, "annual_results", _pdf_page_count(pdf) if pdf else None)
+
+    # 3. Interim only. Tagged, so the UI can name the limitation precisely.
+    for a in _sorted([x for x in anns if _matches_any(x.get("title"), INTERIM_PATTERNS)]):
+        pdf = _download_by_url(a["pdf_url"])
+        return _result(a, "interim", _pdf_page_count(pdf) if pdf else None)
+
+    a = _sorted(anns)[0]
+    pdf = _download_by_url(a["pdf_url"])
+    return _result(a, "interim", _pdf_page_count(pdf) if pdf else None)
 
 
 def find_latest_report_url(ticker: str) -> Optional[str]:

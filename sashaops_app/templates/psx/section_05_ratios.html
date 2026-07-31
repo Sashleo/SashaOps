@@ -1,0 +1,111 @@
+{% import "psx/_macros.html" as m %}
+{{ m.section_head(n, title, note) }}
+
+{% if not a.annual_periods %}
+  {{ m.requirements(a, 'income_statement') }}
+{% else %}
+{% set latest = a.latest_period %}
+{% set prior = a.annual_periods[1] if a.annual_periods|length > 1 else None %}
+{% set R = a.ratios.get(latest, {}) %}
+{% set P = a.ratios.get(prior, {}) if prior else {} %}
+
+{% set c1 = a.charts.get('chart1') %}
+{% if c1 and c1.renderable %}
+<div style="margin-bottom:16px">
+  <div style="font-size:0.82em; color:var(--text-secondary)">{{ c1.title }}</div>
+  <canvas id="chart1-{{ a.ticker }}" height="200"
+          data-sashaops-chart="{{ c1.spec_json|e }}"></canvas>
+  <div style="font-size:0.74em; color:var(--text-dim)">{{ c1.source }}</div>
+  {% for f in c1.footnotes %}<div style="font-size:0.74em; color:#f59e0b">{{ f }}</div>{% endfor %}
+</div>
+{% elif c1 %}
+<div style="font-size:0.8em; color:var(--text-muted); margin-bottom:12px">{{ c1.reason }}</div>
+{% endif %}
+
+{% macro grp(group_title, rows) %}
+<div style="margin-top:14px">
+  <div style="font-size:0.72em; color:var(--text-dim); text-transform:uppercase;
+              letter-spacing:1.2px; margin-bottom:4px">{{ group_title }}</div>
+  <table style="width:100%; font-size:0.84em; border-collapse:collapse">
+    <tr style="color:var(--text-dim); border-bottom:1px solid var(--bg-2); text-align:right">
+      <th style="text-align:left; padding:5px 8px">Ratio</th>
+      <th style="padding:5px 8px">{{ latest }}</th>
+      <th style="padding:5px 8px">{{ prior or 'prior' }}</th>
+      <th style="padding:5px 8px">Sector median</th>
+    </tr>
+    {% for key, label, kind, formula in rows %}
+    <tr style="border-bottom:1px solid var(--bg-2); text-align:right">
+      <td style="text-align:left; padding:5px 8px">
+        <span style="color:var(--text-secondary)">{{ label }}</span>
+        <div style="font-size:0.78em; color:var(--text-dim)">{{ formula }}</div>
+      </td>
+      <td style="padding:5px 8px; font-family:var(--font-mono)">{{ m.metric(R.get(key), kind) }}</td>
+      <td style="padding:5px 8px; font-family:var(--font-mono); color:var(--text-muted)">
+        {{ m.metric(P.get(key), kind) }}</td>
+      <td style="padding:5px 8px; font-family:var(--font-mono); color:var(--text-muted)">
+        {%- set med = a.sector_medians.get(key) -%}
+        {%- if med and med.median is not none -%}
+          {%- if kind == 'pct' -%}{{ '{:,.1f}'.format(med.median * 100) }}%
+          {%- else -%}{{ '{:,.2f}'.format(med.median) }}{%- endif -%}
+          <div style="font-size:0.75em; color:var(--text-dim)">n={{ med.company_count }}</div>
+        {%- else -%}<span style="font-size:0.85em">no median</span>{%- endif -%}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endmacro %}
+
+{{ grp('Profitability', [
+   ('gross_margin', 'Gross margin', 'pct', 'Gross profit / revenue'),
+   ('operating_margin', 'Operating margin', 'pct', 'EBIT / revenue'),
+   ('ebitda_margin', 'EBITDA margin', 'pct', 'EBITDA / revenue'),
+   ('net_margin', 'Net margin', 'pct', 'Profit after tax / revenue'),
+   ('roa', 'Return on assets', 'pct', 'Profit after tax / total assets'),
+   ('roe', 'Return on equity', 'pct', 'Profit after tax / total equity')]) }}
+
+{{ grp('Growth', [
+   ('revenue_growth', 'Revenue growth', 'pct', 'Period over period'),
+   ('gross_profit_growth', 'Gross profit growth', 'pct', 'Period over period'),
+   ('net_income_growth', 'Net income growth', 'pct', 'Period over period')]) }}
+
+{{ grp('Per share and market', [
+   ('eps', 'Earnings per share', 'num', 'PKR per share, as reported'),
+   ('book_value_per_share', 'Book value per share', 'num', 'Total equity / shares'),
+   ('pe', 'Price to earnings', 'x', 'Price / EPS')]) }}
+
+{% set c5 = a.charts.get('chart5') %}
+{% if c5 and c5.renderable %}
+<div style="margin-top:16px">
+  <div style="font-size:0.82em; color:var(--text-secondary)">{{ c5.title }}</div>
+  <canvas id="chart5-{{ a.ticker }}" height="120"
+          data-sashaops-chart="{{ c5.spec_json|e }}"></canvas>
+  <div style="font-size:0.74em; color:var(--text-dim)">{{ c5.source }}</div>
+</div>
+{% elif c5 %}
+<div style="font-size:0.8em; color:var(--text-muted); margin-top:12px">{{ c5.reason }}</div>
+{% endif %}
+
+{# Groups that depend on balance-sheet or cash-flow data give the specific reason. #}
+<div style="margin-top:18px; border-left:3px solid #f59e0b; padding:8px 12px;
+            background:var(--bg-3); border-radius:3px">
+  <div style="font-size:0.72em; color:#f59e0b; text-transform:uppercase;
+              letter-spacing:1.2px">Liquidity, leverage and efficiency</div>
+  <div style="font-size:0.82em; color:var(--text-secondary); margin-top:4px">
+    Required: balance sheet data.
+    {%- set dt = a.source_document_type -%}
+    {%- if dt == 'interim' %}
+      The most recent financial filing available on PSX for {{ a.ticker }} is an
+      interim report{% if a.source_document_pages %} ({{ a.source_document_pages }} pages{% if a.source_document_date %}, {{ a.source_document_date }}{% endif %}){% endif %},
+      which does not include a full statement of financial position.
+    {%- else %}
+      Current assets, current liabilities, total assets and total equity are not
+      published in the PSX summary table and must be extracted from an annual
+      report that clears the accuracy gate.
+    {%- endif %}
+  </div>
+</div>
+
+{{ m.requirements(a, 'ratios') }}
+{{ m.source_line(a, 'income_statement') }}
+{% endif %}

@@ -1,0 +1,69 @@
+{% import "psx/_macros.html" as m %}
+{{ m.section_head(n, title, note) }}
+
+{% set z = a.altman %}
+{% if not z.get('computable') %}
+<div style="font-size:0.85em; color:#f59e0b">
+  Required: {{ (z.get('missing') or ['complete balance sheet data'])|join(', ') }}
+  - Z-Score cannot be computed without complete balance sheet data.
+</div>
+<div style="font-size:0.8em; color:var(--text-muted); margin-top:8px">
+  A partial score is not shown. Omitting a component silently changes what the
+  score means, and a distress signal computed from incomplete inputs is worse than
+  no signal.
+</div>
+{% set c6 = a.charts.get('chart6') %}
+{% if c6 and not c6.renderable %}
+<div style="font-size:0.8em; color:var(--text-muted); margin-top:8px">{{ c6.reason }}</div>
+{% endif %}
+{% else %}
+<div style="display:flex; flex-wrap:wrap; gap:8px 32px; font-size:0.9em; margin-bottom:10px">
+  <div><span style="color:var(--text-muted)">Score:</span>
+    <span style="font-family:var(--font-mono)">{{ m.metric(z.get('score'), 'num') }}</span></div>
+  <div><span style="color:var(--text-muted)">Zone:</span>
+    <span style="color:{% if 'distress' in (z.get('zone')|lower) %}#f87171
+                        {% elif 'grey' in (z.get('zone')|lower) %}#f59e0b
+                        {% else %}var(--accent){% endif %}">{{ z.get('zone') }}</span></div>
+  <div><span style="color:var(--text-muted)">Formula:</span>
+    <span style="color:var(--text-secondary)">{{ z.get('formula_used') }}</span></div>
+</div>
+
+<div style="font-size:0.8em; color:var(--text-dim); margin-bottom:10px">
+  {% if a.is_bank %}
+  Banks use the Z'' four-factor formula: the original five-factor model assumes a
+  manufacturing asset base and a revenue-to-assets term that does not describe a
+  balance sheet funded by deposits.
+  {% else %}
+  Formula selected from the company's sector.
+  {% endif %}
+</div>
+
+{% if z.get('components') %}
+<table style="width:100%; font-size:0.84em; border-collapse:collapse">
+  <tr style="color:var(--text-dim); border-bottom:1px solid var(--bg-2); text-align:right">
+    <th style="text-align:left; padding:5px 8px">Component</th>
+    <th style="padding:5px 8px">Value</th>
+  </tr>
+  {% for k, v in z.get('components').items() %}
+  <tr style="border-bottom:1px solid var(--bg-2); text-align:right">
+    <td style="text-align:left; padding:5px 8px; color:var(--text-secondary)">{{ k }}</td>
+    <td style="padding:5px 8px; font-family:var(--font-mono)">
+      {%- if v is number -%}{{ '{:,.4f}'.format(v) }}{%- else -%}{{ v }}{%- endif -%}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{% set c6 = a.charts.get('chart6') %}
+{% if c6 and c6.renderable %}
+<div style="margin-top:14px">
+  <div style="font-size:0.82em; color:var(--text-secondary)">{{ c6.title }}</div>
+  <canvas id="chart6-{{ a.ticker }}" height="120"
+          data-sashaops-chart="{{ c6.spec_json|e }}"></canvas>
+  <div style="font-size:0.74em; color:var(--text-dim)">{{ c6.source }}</div>
+</div>
+{% endif %}
+{% endif %}
+
+{{ m.requirements(a, 'distress') }}
+{{ m.source_line(a, 'balance_sheet') }}

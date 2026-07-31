@@ -1,0 +1,46 @@
+{% import "psx/_macros.html" as m %}
+{{ m.section_head(n, title, note) }}
+
+{% set p = a.profile %}
+<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:4px 24px">
+  {% for label, key in [
+      ('Legal name', 'company_name'), ('Ticker', 'symbol'),
+      ('Sector', 'sector_name'), ('Chief executive', 'ceo'),
+      ('Chairman', 'chairman'), ('Company secretary', 'company_secretary'),
+      ('Registered office', 'address'), ('Share registrar', 'registrar'),
+      ('Website', 'website')] %}
+  <div style="display:flex; justify-content:space-between; gap:10px; padding:4px 0;
+              border-bottom:1px solid var(--bg-2); font-size:0.85em">
+    <span style="color:var(--text-muted)">{{ label }}</span>
+    <span style="color:var(--text-secondary); text-align:right">
+      {%- if p.get(key) -%}{{ p.get(key) }}
+      {%- else -%}<span style="color:var(--text-muted); font-size:0.9em">Required: {{ label|lower }}</span>{%- endif -%}
+    </span>
+  </div>
+  {% endfor %}
+  <div style="display:flex; justify-content:space-between; gap:10px; padding:4px 0;
+              border-bottom:1px solid var(--bg-2); font-size:0.85em">
+    <span style="color:var(--text-muted)">Shares outstanding</span>
+    <span style="color:var(--text-secondary); font-family:var(--font-mono)">
+      {%- if a.shares_outstanding -%}{{ '{:,.0f}'.format(a.shares_outstanding) }}
+      {%- else -%}<span style="color:var(--text-muted)">Required: shares outstanding</span>{%- endif -%}
+    </span>
+  </div>
+  <div style="display:flex; justify-content:space-between; gap:10px; padding:4px 0;
+              border-bottom:1px solid var(--bg-2); font-size:0.85em">
+    <span style="color:var(--text-muted)">Free float</span>
+    <span style="color:var(--text-secondary); font-family:var(--font-mono)">
+      {%- if p.get('free_float_pct') -%}{{ '{:,.2f}'.format(p.get('free_float_pct')) }}%
+      {%- else -%}<span style="color:var(--text-muted)">Required: free float</span>{%- endif -%}
+    </span>
+  </div>
+</div>
+
+{% if p.get('business_description') %}
+<div style="margin-top:14px; font-size:0.85em; color:var(--text-secondary); line-height:1.55">
+  {{ p.get('business_description') }}
+</div>
+{% endif %}
+
+{{ m.requirements(a, 'profile') }}
+{{ m.source_line(a, 'profile') }}

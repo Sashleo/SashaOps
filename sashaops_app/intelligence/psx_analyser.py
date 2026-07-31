@@ -104,6 +104,16 @@ class PSXAnalysis:
     missing_requirements: dict = field(default_factory=dict)
     staleness: dict = field(default_factory=dict)
     profile: dict = field(default_factory=dict)
+    charts: dict = field(default_factory=dict)
+    # Track B document provenance for the latest period: lets a section name the
+    # actual reason a balance sheet is absent (an interim filing) instead of
+    # reporting a generic gap.
+    source_document_type: Optional[str] = None
+    source_document_pages: Optional[int] = None
+    source_document_url: Optional[str] = None
+    source_document_date: Optional[str] = None
+    observations: dict = field(default_factory=dict)
+    dupont_driver: dict = field(default_factory=dict)
     build_ms: int = 0
     found: bool = False
 
@@ -204,6 +214,12 @@ def _load_statements(db, ticker: str, a: PSXAnalysis) -> None:
         }
         a.cash_flow[period] = {k: scaled.get(k) for k in ("ocf", "capex")}
         latest_fetch = latest_fetch or d.get("fetched_at")
+        # Document provenance belongs to the newest period (loaded first).
+        if a.source_document_type is None:
+            a.source_document_type = d.get("source_document_type")
+            a.source_document_pages = d.get("source_document_pages")
+            a.source_document_url = d.get("source_document_url")
+            a.source_document_date = d.get("source_document_date")
 
     a.source("income_statement", "PSX financial statements", "html_bs4", latest_fetch)
     a.source("balance_sheet", "PSX financial statements + annual report", "html_bs4/pdf",
@@ -359,34 +375,43 @@ def _compute_sector_context(a: PSXAnalysis) -> None:
 
     # Peers: same sector, with their latest stored income statement.
     try:
+        # Latest annual row per peer, plus the prior period so peer revenue growth
+        # (Chart 8's x axis while balance-sheet data is unavailable) is computable.
         rows = get_db().execute(
-            """SELECT c.symbol, c.company_name, c.market_cap, f.revenue, f.net_income,
-                      f.total_assets, f.total_equity, f.eps
+            """SELECT c.symbol, c.company_name, c.market_cap,
+                      f.period, f.revenue, f.net_income, f.total_equity, f.eps
                FROM psx_companies c
                JOIN psx_financials f ON f.symbol = c.symbol AND f.period_type='annual'
                WHERE c.sector_name = ? AND COALESCE(c.is_debt,0)=0
-                 AND f.revenue IS NOT NULL
-               GROUP BY c.symbol
-               ORDER BY c.market_cap DESC NULLS LAST LIMIT 40""",
+                 AND f.revenue IS NOT NULL AND f.period != 'latest'
+               ORDER BY c.market_cap DESC NULLS LAST, c.symbol, f.period DESC""",
             (a.sector,),
         ).fetchall()
     except Exception:
         rows = []
 
-    peers = []
+    by_symbol: dict = {}
     for r in rows:
-        d = dict(r)
-        rev = (d.get("revenue") or 0) * PKR_THOUSANDS
-        ni = (d.get("net_income") or 0) * PKR_THOUSANDS
-        eq = (d.get("total_equity") or 0) * PKR_THOUSANDS
+        by_symbol.setdefault(dict(r)["symbol"], []).append(dict(r))
+
+    peers = []
+    for sym, recs in list(by_symbol.items())[:40]:
+        latest_rec = recs[0]
+        prior_rec = recs[1] if len(recs) > 1 else {}
+        rev = (latest_rec.get("revenue") or 0) * PKR_THOUSANDS
+        ni = (latest_rec.get("net_income") or 0) * PKR_THOUSANDS
+        eq = (latest_rec.get("total_equity") or 0) * PKR_THOUSANDS
+        prev_rev = (prior_rec.get("revenue") or 0) * PKR_THOUSANDS
         peers.append({
-            "symbol": d["symbol"],
-            "company_name": d.get("company_name"),
-            "market_cap": d.get("market_cap"),
+            "symbol": sym,
+            "company_name": latest_rec.get("company_name"),
+            "market_cap": latest_rec.get("market_cap"),
+            "period": latest_rec.get("period"),
             "net_margin": _div(ni, rev),
             "roe": _div(ni, eq),
-            "eps": d.get("eps"),
-            "is_subject": d["symbol"] == a.ticker,
+            "revenue_growth": _div(rev - prev_rev, prev_rev) if prev_rev else None,
+            "eps": latest_rec.get("eps"),
+            "is_subject": sym == a.ticker,
         })
     a.peers = peers
 
@@ -583,11 +608,131 @@ def build_analysis(ticker: str) -> PSXAnalysis:
               "audit report text - the annual report PDF for this ticker has not "
               "yielded a readable auditor's report")
 
+    a.dupont_driver = _dupont_driver(a)
+    a.observations = _observations(a)
     a.health_score = _health(a)
+    try:
+        from intelligence.psx_charts import build_charts
+        a.charts = build_charts(a)
+    except Exception as e:
+        log.info("chart build skipped", ticker=ticker, error=str(e)[:80])
     a.build_ms = int((time.time() - t0) * 1000)
     log.debug("build_analysis complete", ticker=ticker, ms=a.build_ms,
              periods=len(a.annual_periods))
     return a
+
+
+_PCT_LABELS = {"net_margin": "Net margin", "gross_margin": "Gross margin",
+               "roe": "Return on equity", "roa": "Return on assets",
+               "operating_margin": "Operating margin"}
+
+
+_DUPONT_INTERPRETATION = {
+    "equity_multiplier": "Returns depend materially on balance sheet leverage "
+                        "rather than operating performance.",
+    "net_margin": "Returns are driven by operating profitability.",
+    "asset_turnover": "Returns are driven by asset efficiency.",
+}
+
+
+def _dupont_driver(a: PSXAnalysis) -> dict:
+    """
+    Which component explains the ROE, measured as the largest relative deviation
+    from its sector median. Returns {} when medians or components are missing,
+    rather than naming a driver that was not actually compared to anything.
+    """
+    best = None
+    for key in ("net_margin", "asset_turnover", "equity_multiplier"):
+        mm = (a.dupont or {}).get(key) or {}
+        med = (a.sector_medians.get(key) or {}).get("median")
+        if mm.get("status") != "ok" or mm.get("value") is None or not med:
+            continue
+        deviation = abs(mm["value"] - med) / abs(med)
+        if best is None or deviation > best[0]:
+            best = (deviation, key, mm["value"])
+    if not best:
+        return {}
+    _, key, value = best
+    label = {"net_margin": "net margin", "asset_turnover": "asset turnover",
+             "equity_multiplier": "the equity multiplier"}[key]
+    shown = f"{value * 100:,.1f}%" if key == "net_margin" else f"{value:,.2f}x"
+    return {"key": key, "name": label, "value": shown,
+            "interpretation": _DUPONT_INTERPRETATION[key]}
+
+
+def _observations(a: PSXAnalysis) -> dict:
+    """
+    Section 12: structured observations, not recommendations.
+
+    Every entry is produced by a rule over already-validated values, so nothing
+    here is generated prose. Rules that need data we do not have simply do not
+    fire; the limitations list carries those gaps explicitly.
+    """
+    latest = a.latest_period
+    R = a.ratios.get(latest, {}) if latest else {}
+    strengths, weaknesses, risks = [], [], []
+
+    def _trend(key: str) -> Optional[str]:
+        """'improved' | 'held' | 'deteriorated' across available validated periods."""
+        vals = []
+        for p in reversed(a.annual_periods):
+            mm = (a.ratios.get(p) or {}).get(key) or {}
+            if mm.get("status") == "ok" and mm.get("value") is not None:
+                vals.append(mm["value"])
+        if len(vals) < 2:
+            return None
+        if vals[-1] > vals[0] * 1.02:
+            return "improved"
+        if vals[-1] < vals[0] * 0.98:
+            return "deteriorated"
+        return "held"
+
+    for key, label in _PCT_LABELS.items():
+        mm = R.get(key) or {}
+        if mm.get("status") != "ok" or mm.get("value") is None:
+            continue
+        med = (a.sector_medians.get(key) or {}).get("median")
+        if med is None:
+            continue
+        trend = _trend(key)
+        n_periods = len([p for p in a.annual_periods
+                        if ((a.ratios.get(p) or {}).get(key) or {}).get("status") == "ok"])
+        if mm["value"] > med and trend in ("improved", "held", None):
+            strengths.append(
+                f"{label} of {mm['value'] * 100:,.1f}% is above the {a.sector} median "
+                f"of {med * 100:,.1f}%"
+                + (f" and has {trend} over {n_periods} periods." if trend else "."))
+        elif mm["value"] < med and trend in ("deteriorated", "held", None):
+            weaknesses.append(
+                f"{label} of {mm['value'] * 100:,.1f}% is below the {a.sector} median "
+                f"of {med * 100:,.1f}%"
+                + (f" and has {trend} over {n_periods} periods." if trend else "."))
+
+    # Risk rules that the available data can actually evaluate.
+    ic = R.get("interest_coverage") or {}
+    if ic.get("status") == "ok" and ic.get("value") is not None and ic["value"] < 1.5:
+        risks.append(f"Interest coverage of {ic['value']:,.2f}x is below 1.5x; "
+                    f"earnings provide a thin buffer over financing costs.")
+    cr = R.get("current_ratio") or {}
+    if cr.get("status") == "ok" and cr.get("value") is not None and cr["value"] < 1.0:
+        risks.append(f"Current ratio of {cr['value']:,.2f} is below 1.0; current "
+                    f"liabilities exceed current assets.")
+    if a.altman.get("computable") and (a.altman.get("zone") or "").lower().startswith("distress"):
+        risks.append("Altman Z-Score places the company in the distress zone.")
+
+    # Revenue declining across two or more consecutive periods.
+    revs = [a.income_statement.get(p, {}).get("revenue") for p in a.annual_periods]
+    revs = [r for r in revs if r is not None]
+    if len(revs) >= 3 and revs[0] < revs[1] < revs[2]:
+        risks.append("Revenue has declined for two consecutive periods.")
+
+    limitations = []
+    for section, reqs in a.missing_requirements.items():
+        for r in reqs:
+            limitations.append(f"{section}: {r}")
+
+    return {"strengths": strengths, "weaknesses": weaknesses, "risks": risks,
+            "limitations": limitations}
 
 
 def _health(a: PSXAnalysis) -> dict:

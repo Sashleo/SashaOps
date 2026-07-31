@@ -12,6 +12,10 @@
        loads under the strict Content-Security-Policy (script-src 'self') and makes
        no external network call. -->
   <script src="/static/js/htmx.min.js" defer></script>
+  <!-- Chart.js is vendored locally: the strict CSP blocks CDN scripts. charts.js
+       draws payloads built in Python so screen and PDF charts cannot diverge. -->
+  <script src="/static/js/chart.umd.min.js" defer></script>
+  <script src="/static/js/charts.js" defer></script>
   {% block head %}{% endblock %}
 </head>
 <body>

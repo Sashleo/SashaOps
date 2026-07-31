@@ -1,0 +1,87 @@
+{% import "psx/_macros.html" as m %}
+{{ m.section_head(n, title, note) }}
+
+{% if not a.annual_periods %}
+  {{ m.requirements(a, 'income_statement') }}
+{% else %}
+{% set periods = a.annual_periods[:4] %}
+{% set latest = periods[0] %}
+{% set prior = periods[1] if periods|length > 1 else None %}
+
+{# Chart 2: revenue and profit history. Data is prepared in Python
+   (psx_analyser.build_charts) so the template never assembles chart payloads. #}
+{% set c2 = a.charts.get('chart2') %}
+{% if c2 and c2.renderable %}
+<div style="margin-bottom:16px">
+  <div style="font-size:0.82em; color:var(--text-secondary); margin-bottom:4px">{{ c2.title }}</div>
+  <canvas id="chart2-{{ a.ticker }}" height="160"
+          data-sashaops-chart="{{ c2.spec_json|e }}"></canvas>
+  <div style="font-size:0.74em; color:var(--text-dim); margin-top:4px">{{ c2.source }}</div>
+  {% if c2.footnotes %}
+    {% for f in c2.footnotes %}
+    <div style="font-size:0.74em; color:#f59e0b">{{ f }}</div>
+    {% endfor %}
+  {% endif %}
+</div>
+{% elif c2 %}
+<div style="font-size:0.8em; color:var(--text-muted); margin-bottom:12px">{{ c2.reason }}</div>
+{% endif %}
+
+<div style="overflow-x:auto">
+<table style="width:100%; font-size:0.84em; border-collapse:collapse">
+  <tr style="color:var(--text-dim); border-bottom:1px solid var(--bg-2); text-align:right">
+    <th style="text-align:left; padding:6px 8px">PKR millions</th>
+    {% for p in periods %}<th style="padding:6px 8px">{{ p }}</th>{% endfor %}
+    <th style="padding:6px 8px">% of revenue</th>
+    <th style="padding:6px 8px">vs prior</th>
+  </tr>
+  {% set rows = [
+      ('Revenue', 'revenue'),
+      ('Gross profit', 'gross_profit'),
+      ('Operating profit (EBIT)', 'ebit'),
+      ('Finance cost', 'interest_expense'),
+      ('Profit after taxation', 'net_income')] %}
+  {% for label, key in rows %}
+  {% set cur = a.income_statement.get(latest, {}).get(key) %}
+  {% set rev = a.income_statement.get(latest, {}).get('revenue') %}
+  <tr style="border-bottom:1px solid var(--bg-2); text-align:right">
+    <td style="text-align:left; padding:6px 8px; color:var(--text-secondary)">{{ label }}</td>
+    {% for p in periods %}
+    <td style="padding:6px 8px; font-family:var(--font-mono)">
+      {{ m.pkr_mn(a.income_statement.get(p, {}).get(key)) }}
+    </td>
+    {% endfor %}
+    <td style="padding:6px 8px; font-family:var(--font-mono); color:var(--text-muted)">
+      {%- if cur is not none and rev -%}{{ '{:,.1f}'.format(cur / rev * 100) }}%
+      {%- else -%}<span style="color:var(--text-muted)">n/a</span>{%- endif -%}
+    </td>
+    <td style="padding:6px 8px; font-size:0.9em">
+      {{ m.direction(cur, a.income_statement.get(prior, {}).get(key) if prior else None) }}
+    </td>
+  </tr>
+  {% endfor %}
+  <tr style="text-align:right">
+    <td style="text-align:left; padding:6px 8px; color:var(--text-secondary)">Earnings per share (PKR)</td>
+    {% for p in periods %}
+    <td style="padding:6px 8px; font-family:var(--font-mono)">
+      {%- set e = a.income_statement.get(p, {}).get('eps') -%}
+      {%- if e is not none -%}{{ '{:,.2f}'.format(e) }}{%- else -%}
+      <span style="color:var(--text-muted); font-size:0.9em">not reported</span>{%- endif -%}
+    </td>
+    {% endfor %}
+    <td colspan="2"></td>
+  </tr>
+</table>
+</div>
+
+{% if a.is_bank %}
+<div style="font-size:0.78em; color:var(--text-dim); margin-top:8px">
+  Banking presentation: PSX reports total income for banks rather than a
+  turnover and cost-of-sales split, so gross profit and cost of sales are not
+  applicable rows for this company.
+</div>
+{% endif %}
+
+{{ m.requirements(a, 'income_statement') }}
+{{ m.source_line(a, 'income_statement') }}
+{% endif %}

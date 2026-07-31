@@ -550,6 +550,16 @@ def _apply_column_additions(db) -> None:
                  "interest_expense", "depreciation", "ocf", "capex"):
         _add_column_if_missing(db, "psx_financials", _col, "REAL")
 
+    # Phase 3 Track B: record WHICH document a period's figures came from, so a
+    # missing balance sheet can name the actual reason ("the latest filing on PSX
+    # is a 37-page interim report") instead of a generic gap - and so a sourcing
+    # failure is distinguishable from a genuine absence, per ticker.
+    for _c, _t in (("source_document_type", "TEXT"),    # annual_report|annual_results|interim
+                   ("source_document_pages", "INTEGER"),
+                   ("source_document_url", "TEXT"),
+                   ("source_document_date", "TEXT")):
+        _add_column_if_missing(db, "psx_financials", _c, _t)
+
 
 def _add_column_if_missing(db, table: str, column: str, col_type: str) -> None:
     existing = {row[1] for row in db.execute(f"PRAGMA table_info({table})")}

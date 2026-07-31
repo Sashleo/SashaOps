@@ -1,0 +1,34 @@
+<!-- psx/_staleness.html - Task 3.10. Polls only while a refresh is in flight. -->
+<div id="psx-staleness"
+  {% if refreshing %}
+  hx-get="/psx/{{ a.ticker }}/staleness"
+  hx-trigger="every 4s"
+  hx-target="#psx-staleness"
+  hx-swap="outerHTML"
+  {% endif %}
+>
+  {% if refreshing %}
+  <div class="card mb-24" style="border-left:3px solid #6b7280">
+    <div style="font-size:0.88em; color:var(--text-secondary)">
+      Refreshing {{ a.ticker }}: profile, financials and announcements. Sections
+      reload when the scrape completes.
+    </div>
+  </div>
+  {% elif a.staleness.is_stale %}
+  <div class="card mb-24" style="border-left:3px solid #f59e0b">
+    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px">
+      <div style="font-size:0.88em; color:var(--text-secondary)">
+        <strong style="color:#f59e0b">Data staleness.</strong>
+        {% for m in a.staleness.messages %}{{ m }}{% if not loop.last %} · {% endif %}{% endfor %}
+      </div>
+      <button class="btn btn-sm"
+              hx-post="/psx/{{ a.ticker }}/refresh"
+              hx-target="#psx-staleness"
+              hx-swap="outerHTML"
+              style="white-space:nowrap; font-size:0.78em; padding:4px 10px">
+        Refresh this ticker
+      </button>
+    </div>
+  </div>
+  {% endif %}
+</div>

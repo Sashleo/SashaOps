@@ -1,0 +1,78 @@
+{% import "psx/_macros.html" as m %}
+{{ m.section_head(n, title, note) }}
+
+{% set valid = a.peers|selectattr('net_margin', 'ne', None)|list %}
+{% if valid|length < 4 %}
+<div style="font-size:0.85em; color:#f59e0b">
+  Insufficient peers in {{ a.sector or 'this sector' }} for a reliable benchmark
+  ({{ valid|length }} compan{{ 'y' if valid|length == 1 else 'ies' }} with valid data).
+</div>
+{% else %}
+
+{% set c4 = a.charts.get('chart4') %}
+{% if c4 and c4.renderable %}
+<div style="margin-bottom:14px">
+  <div style="font-size:0.82em; color:var(--text-secondary)">{{ c4.title }}</div>
+  <canvas id="chart4-{{ a.ticker }}" height="160"
+          data-sashaops-chart="{{ c4.spec_json|e }}"></canvas>
+  <div style="font-size:0.74em; color:var(--text-dim)">{{ c4.source }}</div>
+  <div style="font-size:0.74em; color:var(--text-dim)">
+    Leverage percentiles are inverted, lower leverage ranks higher.
+  </div>
+</div>
+{% endif %}
+
+<div style="font-size:0.85em; color:var(--text-secondary); margin-bottom:10px">
+  {% for key, label in [('net_margin', 'net margin'), ('roe', 'return on equity')] %}
+    {% if a.sector_percentiles.get(key) is not none %}
+    Of {{ valid|length }} companies in {{ a.sector }} with valid data, {{ a.ticker }}
+    ranks in the {{ a.sector_percentiles.get(key) }}th percentile on {{ label }}.
+    {% endif %}
+  {% endfor %}
+</div>
+
+<div style="overflow-x:auto">
+<table style="width:100%; font-size:0.83em; border-collapse:collapse">
+  <tr style="color:var(--text-dim); border-bottom:1px solid var(--bg-2); text-align:right">
+    <th style="text-align:left; padding:5px 8px">Ticker</th>
+    <th style="text-align:left; padding:5px 8px">Company</th>
+    <th style="padding:5px 8px">Period</th>
+    <th style="padding:5px 8px">Net margin</th>
+    <th style="padding:5px 8px">ROE</th>
+    <th style="padding:5px 8px">Revenue growth</th>
+    <th style="padding:5px 8px">Market cap (PKR)</th>
+  </tr>
+  {% for p in a.peers %}
+  <tr style="border-bottom:1px solid var(--bg-2); text-align:right;
+             {% if p.is_subject %}background:var(--bg-3){% endif %}">
+    <td style="text-align:left; padding:5px 8px; font-family:var(--font-mono);
+               color:{% if p.is_subject %}var(--accent){% else %}var(--text-muted){% endif %}">
+      {{ p.symbol }}{% if p.is_subject %} (subject){% endif %}
+    </td>
+    <td style="text-align:left; padding:5px 8px; color:var(--text-secondary)">
+      {{ (p.company_name or '')[:34] }}</td>
+    <td style="padding:5px 8px; color:var(--text-dim)">{{ p.period or '' }}</td>
+    <td style="padding:5px 8px; font-family:var(--font-mono)">
+      {%- if p.net_margin is not none -%}{{ '{:,.1f}'.format(p.net_margin * 100) }}%
+      {%- else -%}<span style="color:var(--text-muted)">n/a</span>{%- endif -%}</td>
+    <td style="padding:5px 8px; font-family:var(--font-mono)">
+      {%- if p.roe is not none -%}{{ '{:,.1f}'.format(p.roe * 100) }}%
+      {%- else -%}<span style="color:var(--text-muted)">n/a</span>{%- endif -%}</td>
+    <td style="padding:5px 8px; font-family:var(--font-mono)">
+      {%- if p.revenue_growth is not none -%}{{ '{:,.1f}'.format(p.revenue_growth * 100) }}%
+      {%- else -%}<span style="color:var(--text-muted)">n/a</span>{%- endif -%}</td>
+    <td style="padding:5px 8px; font-family:var(--font-mono); color:var(--text-muted)">
+      {%- if p.market_cap -%}{{ '{:,.0f}'.format(p.market_cap) }}
+      {%- else -%}n/a{%- endif -%}</td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+<div style="font-size:0.76em; color:var(--text-dim); margin-top:6px">
+  Liquidity, leverage and efficiency percentiles require balance-sheet data and are
+  omitted rather than estimated. Ordered by market capitalisation.
+</div>
+{% endif %}
+
+{{ m.requirements(a, 'sector') }}
+{{ m.source_line(a, 'income_statement') }}
