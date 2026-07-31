@@ -65,6 +65,10 @@ MAX_LOCATE_PAGES = 650
 # Hard cap on low-DPI OCR during the locate pass. Without it a report whose pages
 # all lack a text layer costs one OCR per page before the statements are found.
 MAX_LOCATE_OCR_PAGES = 120
+# How many pages to probe for a text layer before concluding the document is
+# scanned. A real digital report has text on its first pages; continuing to parse
+# 600 page objects to confirm what the first 25 already showed is pure cost.
+_TEXT_PROBE_PAGES = 25
 RECONCILE_TOLERANCE = 0.005   # 0.5%
 
 # A title line is short. Requiring that avoids matching a contents-page entry or a
@@ -92,19 +96,54 @@ def _scan_order(blank_pages: list, n_pages: int) -> list:
     return later + earlier
 
 
-def _match_type(text: str) -> Optional[str]:
-    """Which statement type this page's text looks like a title page for."""
+# A statement page is a dense numeric TABLE. A narrative page is prose. Verified
+# on FFC: pages 48 and 77 both matched a title pattern but are a SWOT page and an
+# MD&A ratio commentary - neither carries a statement. Multi-column narrative also
+# defeats a short-line test, because OCR of a 3-column layout emits short
+# fragments ("Liquidity Ratios", "Profitability Ratios") that look like titles.
+# Requiring the title near the top AND real numeric density separates them.
+_TITLE_SEARCH_LINES = 12      # a statement title sits at the head of its page
+_MIN_NUMERIC_ROWS = 6         # rows carrying a financial figure
+_STATEMENT_NUM = re.compile(r"\d{1,3}(?:,\d{3})+|\d{5,}")
+
+
+def _numeric_row_count(text: str) -> int:
+    """Lines carrying at least one grouped/large number, as a statement table has."""
+    return sum(1 for line in (text or "").split("\n")
+               if _STATEMENT_NUM.search(line))
+
+
+def _match_type(text: str, require_density: bool = True) -> Optional[str]:
+    """
+    Which statement type this page is, or None.
+
+    The title must appear in the first few lines (a heading, not a mention in
+    prose), and unless disabled the page must also read like a table rather than
+    an essay about one.
+    """
     if not text:
         return None
-    for line in text.split("\n"):
+    lines = text.split("\n")
+    hit = None
+    for line in lines[:_TITLE_SEARCH_LINES]:
         s = line.strip().lower()
         if not s or len(s) > _MAX_TITLE_LINE_CHARS:
             continue
         for st, patterns in STATEMENT_TYPES.items():
             for p in patterns:
                 if re.search(p, s):
-                    return st
-    return None
+                    hit = st
+                    break
+            if hit:
+                break
+        if hit:
+            break
+    if not hit:
+        return None
+    # The auditor's report is genuinely prose, so density does not apply to it.
+    if hit == "audit" or not require_density:
+        return hit
+    return hit if _numeric_row_count(text) >= _MIN_NUMERIC_ROWS else None
 
 
 def _is_consolidated(text: str) -> bool:
@@ -138,6 +177,22 @@ def locate_statement_pages(pdf_bytes: bytes) -> dict:
                     text_pages[i] = t
                 else:
                     blank_pages.append(i)
+                # pdfplumber builds a page object model even when a page carries no
+                # text, so this pre-pass alone stalls on a large scanned report
+                # (measured: no progress in 15 minutes on a 608-page document).
+                # Once enough consecutive pages have come back empty, the document
+                # is scanned and the text pass has nothing left to contribute.
+                if i >= _TEXT_PROBE_PAGES and not text_pages:
+                    blank_pages = list(range(n_pages))
+                    log.info("locate: no text layer found in probe, treating as scanned",
+                             probed=_TEXT_PROBE_PAGES, pages=n_pages)
+                    break
+                # Free the cached page object; pdfplumber otherwise retains every
+                # page it has parsed and the pass grows to hundreds of megabytes.
+                try:
+                    pdf.pages[i].flush_cache()
+                except Exception:
+                    pass
     except Exception as e:
         log.info("locate: pdf open failed", error=str(e)[:80])
         return found
@@ -208,8 +263,18 @@ def _preprocess(pil_img, denoise: bool = True):
     return img
 
 
-def ocr_pages(pdf_bytes: bytes, page_indexes: list, preprocess: bool = True) -> str:
-    """STEP 2. High-quality OCR of specific pages at 400 DPI, --psm 6."""
+def ocr_pages(pdf_bytes: bytes, page_indexes: list, preprocess: bool = False) -> str:
+    """
+    STEP 2. High-quality OCR of specific pages at 400 DPI, --psm 6.
+
+    preprocess defaults OFF on evidence, not preference. Phase 2's method study
+    found every OpenCV preprocessing variant lost to raw OCR 15-2, and that
+    reproduced here at 400 DPI: on FFC page 48 the preprocessed pass returned
+    character soup ("ay al OI sl ol (Ol 5] Sy FS ei") while the raw pass returned
+    readable English from the same page. Deskew plus adaptive threshold is
+    available via preprocess=True for genuinely skewed scans, but it must be
+    opted into rather than inflicted by default.
+    """
     if not page_indexes:
         return ""
     try:
@@ -302,8 +367,32 @@ def _scaled(parsed: dict, text: str) -> tuple:
     return cur, pri, scale
 
 
+def _coherent(d: dict) -> Optional[str]:
+    """
+    Cross-checks the accounting identity alone cannot catch.
+
+    ABOT passed reconciliation at 0.00% while reporting current_assets of
+    30,993mn against total_assets of 47mn - impossible, and invisible to
+    assets = equity + liabilities because all three of those lines happened to be
+    misread at the same scale. A subtotal larger than its own total means the page
+    was read at inconsistent scales, so the extraction must be rejected.
+    """
+    ta = d.get("total_assets")
+    if ta:
+        for sub in ("current_assets", "cash", "inventory", "receivables"):
+            v = d.get(sub)
+            if v is not None and abs(v) > abs(ta):
+                return (f"{sub} ({v:,.0f}) exceeds total_assets ({ta:,.0f}); "
+                       f"lines were read at inconsistent scales")
+    cl, tl = d.get("current_liabilities"), d.get("total_liabilities")
+    if tl and cl is not None and abs(cl) > abs(tl):
+        return (f"current_liabilities ({cl:,.0f}) exceeds total_liabilities "
+               f"({tl:,.0f}); lines were read at inconsistent scales")
+    return None
+
+
 def _reconciles(d: dict) -> tuple:
-    """STEP 5. assets = equity + liabilities within 0.5%."""
+    """STEP 5. assets = equity + liabilities within 0.5%, plus coherence."""
     ta = d.get("total_assets")
     te = d.get("total_equity")
     tl = d.get("total_liabilities")
@@ -313,6 +402,9 @@ def _reconciles(d: dict) -> tuple:
         return None, f"incomplete: missing {', '.join(missing)}"
     if not ta:
         return False, "total_assets is zero"
+    incoherent = _coherent(d)
+    if incoherent:
+        return False, incoherent
     diff = abs(ta - (te + tl)) / abs(ta)
     return diff <= RECONCILE_TOLERANCE, f"difference {diff * 100:.2f}%"
 

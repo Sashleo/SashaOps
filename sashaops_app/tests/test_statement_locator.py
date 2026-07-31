@@ -15,16 +15,44 @@ from intelligence.statement_locator import (
 
 # ── Page title matching ───────────────────────────────────────────────────────
 
+_TABLE_ROWS = ("Total assets 5,000,000 4,400,000\n"
+               "Total equity 3,000,000 2,700,000\n"
+               "Total liabilities 2,000,000 1,700,000\n"
+               "Cash 100,000 90,000\n"
+               "Inventory 250,000 240,000\n"
+               "Receivables 300,000 280,000\n")
+
+
 def test_matches_statement_of_financial_position():
-    assert _match_type("Statement of Financial Position\nAs at June 30, 2025") \
-        == "balance_sheet"
+    assert _match_type("Statement of Financial Position\nAs at June 30, 2025\n"
+                      + _TABLE_ROWS) == "balance_sheet"
 
 
-def test_matches_balance_sheet_and_cash_flows_and_audit():
-    assert _match_type("Balance Sheet") == "balance_sheet"
-    assert _match_type("Statement of Cash Flows") == "cashflow"
-    assert _match_type("Independent Auditor's Report") == "audit"
-    assert _match_type("Profit and Loss Account") == "income"
+def test_matches_balance_sheet_and_cash_flows_and_income():
+    assert _match_type("Balance Sheet\n" + _TABLE_ROWS) == "balance_sheet"
+    assert _match_type("Statement of Cash Flows\n" + _TABLE_ROWS) == "cashflow"
+    assert _match_type("Profit and Loss Account\n" + _TABLE_ROWS) == "income"
+
+
+def test_auditors_report_matches_without_numeric_density():
+    # The auditor's report is genuinely prose, so the table test must not apply.
+    assert _match_type("Independent Auditor's Report\nTo the members of the "
+                      "Company\nWe have audited the annexed statements.") == "audit"
+
+
+def test_title_without_a_table_is_rejected():
+    # Verified on FFC: pages 48 and 77 matched a title pattern but are a SWOT page
+    # and an MD&A ratio commentary. Neither carries a statement, and OCR of their
+    # multi-column layout emits short fragments that defeat a line-length test.
+    narrative = ("Statement of financial position\n"
+                 "Operating in a mature industry with relatively stagnant demand\n"
+                 "Provision of concessionary gas rates to competitors")
+    assert _match_type(narrative) is None
+
+
+def test_title_far_down_the_page_is_a_mention_not_a_heading():
+    body = "\n".join(f"Narrative line {i}" for i in range(20))
+    assert _match_type(body + "\nstatement of financial position\n" + _TABLE_ROWS) is None
 
 
 def test_long_prose_line_is_not_treated_as_a_title():
@@ -132,4 +160,31 @@ def test_tolerance_is_half_a_percent():
     # Just inside tolerance passes; a larger gap does not.
     ok, _ = _reconciles({"total_assets": 1_000_000, "total_equity": 600_000,
                         "total_liabilities": 396_000})
+    assert ok is True
+
+
+# ── Coherence: the identity alone is not sufficient ───────────────────────────
+
+def test_subtotal_exceeding_its_total_is_rejected_even_when_the_identity_holds():
+    # ABOT passed reconciliation at 0.00% while reporting current_assets of
+    # 30,993mn against total_assets of 47mn. All three identity lines were misread
+    # at the same scale, so the identity held and the nonsense passed.
+    ok, why = _reconciles({"total_assets": 47, "total_equity": 30,
+                          "total_liabilities": 17, "current_assets": 30_993})
+    assert ok is False
+    assert "inconsistent scales" in why
+
+
+def test_current_liabilities_exceeding_total_liabilities_is_rejected():
+    ok, why = _reconciles({"total_assets": 5_000_000, "total_equity": 3_000_000,
+                          "total_liabilities": 2_000_000,
+                          "current_liabilities": 2_500_000})
+    assert ok is False
+    assert "inconsistent scales" in why
+
+
+def test_coherent_statement_still_reconciles():
+    ok, _ = _reconciles({"total_assets": 5_000_000, "total_equity": 3_000_000,
+                        "total_liabilities": 2_000_000, "current_assets": 1_500_000,
+                        "current_liabilities": 900_000})
     assert ok is True

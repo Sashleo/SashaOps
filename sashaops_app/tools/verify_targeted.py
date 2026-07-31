@@ -14,9 +14,10 @@ init_database()
 from intelligence.psx_report_parser import select_report_document, _download_by_url
 from intelligence.statement_locator import extract_statements
 
-# The five scanned annual-grade documents from the Track B run.
-TICKERS = ["FFC", "MCB", "ENGRO", "ABOT", "GLAXO"]
-PREPROCESS = "--raw" not in sys.argv
+# The five scanned annual-grade documents from the Track B run, smallest document
+# first so partial results arrive early rather than blocking behind a 608-page one.
+TICKERS = ["GLAXO", "ABOT", "ENGRO", "MCB", "FFC"]
+PREPROCESS = "--preprocess" in sys.argv
 
 rows = []
 for tk in TICKERS:
