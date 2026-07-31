@@ -242,6 +242,32 @@ def _schedule_background_ocr(ticker: str, pdf_bytes: bytes, url: str) -> None:
                 except Exception as e:
                     log.info("IR annual-report fallback skipped", ticker=ticker, error=str(e)[:80])
 
+            # Targeted extraction first: locate the statement pages and OCR only
+            # those at high quality, instead of OCRing an entire annual report to
+            # read a two-page balance sheet. Accepted only when the statement
+            # reconciles, so this cannot lower the accuracy bar - it only makes a
+            # successful extraction cheaper and adds the prior period for free.
+            try:
+                from intelligence.statement_locator import extract_statements
+                tgt = extract_statements(pdf_bytes, ticker=ticker)
+                if tgt.get("reconciled") is True and tgt.get("current"):
+                    doc = dict(tgt["current"])
+                    doc["_method"] = "targeted_ocr"
+                    doc["_ocr"] = True
+                    doc["_balance_ok"] = True
+                    doc["_already_scaled"] = True
+                    doc["_basis"] = tgt.get("basis")
+                    doc["_prior_period"] = tgt.get("prior") or {}
+                    _save_cache(ticker, doc)
+                    log.info("Targeted statement extraction succeeded", ticker=ticker,
+                             pages=tgt.get("ocr_pages"), basis=tgt.get("basis"),
+                             fields=sorted(tgt["current"].keys()))
+                    return
+                log.info("Targeted extraction not used", ticker=ticker,
+                         reconciled=tgt.get("reconciled"), reason=tgt.get("reason"))
+            except Exception as e:
+                log.info("Targeted extraction skipped", ticker=ticker, error=str(e)[:90])
+
             from intelligence.pdf_extractor import extract_financials
             res    = extract_financials(pdf_bytes, ocr=True)
             doc    = res.get("financials") or {}
