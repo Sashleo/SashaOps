@@ -73,6 +73,25 @@ RECONCILE_TOLERANCE = 0.005   # 0.5%
 _MAX_TITLE_LINE_CHARS = 90
 
 
+# Where the financial statements actually sit. An annual report opens with the
+# narrative (chairman's review, governance, sustainability) and puts the audited
+# statements well past the middle. Scanning blank pages front-to-back spends the
+# OCR budget on the narrative: in a 608-page report a 120-page budget would never
+# reach page 200. Scanning from here forward, then wrapping to the front, finds
+# them far sooner without excluding any page.
+_STATEMENT_ZONE_START = 0.35
+
+
+def _scan_order(blank_pages: list, n_pages: int) -> list:
+    """Blank pages ordered by how likely they are to hold a statement."""
+    if not blank_pages or not n_pages:
+        return blank_pages
+    cut = int(n_pages * _STATEMENT_ZONE_START)
+    later = [p for p in blank_pages if p >= cut]
+    earlier = [p for p in blank_pages if p < cut]
+    return later + earlier
+
+
 def _match_type(text: str) -> Optional[str]:
     """Which statement type this page's text looks like a title page for."""
     if not text:
@@ -147,7 +166,7 @@ def locate_statement_pages(pdf_bytes: bytes) -> dict:
             import pytesseract
             from pdf2image import convert_from_bytes
             budget = MAX_LOCATE_OCR_PAGES
-            for i in blank_pages:
+            for i in _scan_order(blank_pages, n_pages):
                 if _have_financials() or budget <= 0:
                     break
                 budget -= 1

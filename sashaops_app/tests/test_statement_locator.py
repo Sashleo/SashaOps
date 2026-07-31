@@ -9,7 +9,7 @@ ships an unbalanced statement.
 
 from intelligence.statement_locator import (
     _match_type, _is_consolidated, expand_pages, parse_two_column, _reconciles,
-    RECONCILE_TOLERANCE,
+    _scan_order, RECONCILE_TOLERANCE, MAX_LOCATE_OCR_PAGES,
 )
 
 
@@ -56,6 +56,30 @@ def test_unconsolidated_is_not_consolidated():
 def test_expand_pages_covers_following_pages_without_duplicates():
     assert expand_pages([10], span=2) == [10, 11, 12]
     assert expand_pages([10, 11], span=2) == [10, 11, 12, 13]
+
+
+# ── Scan order ────────────────────────────────────────────────────────────────
+
+def test_scan_order_reaches_the_statement_zone_inside_the_ocr_budget():
+    # Annual reports open with narrative and put the audited statements past the
+    # middle. Scanning front-to-back spent the whole budget on the narrative: in a
+    # 608-page report the statements sit around 40-50% and were never reached.
+    for n_pages, fraction in ((608, 0.40), (608, 0.50), (176, 0.375), (221, 0.45)):
+        order = _scan_order(list(range(n_pages)), n_pages)
+        target = int(n_pages * fraction)
+        assert order.index(target) < MAX_LOCATE_OCR_PAGES, (
+            f"{n_pages}-page doc: statement at {fraction:.0%} not reached in budget")
+
+
+def test_scan_order_still_covers_every_page():
+    # Reordering must not drop pages: a statement outside the expected zone is
+    # still found, just later.
+    order = _scan_order(list(range(300)), 300)
+    assert sorted(order) == list(range(300))
+
+
+def test_scan_order_is_safe_on_empty_input():
+    assert _scan_order([], 0) == []
 
 
 # ── Two-column parsing ────────────────────────────────────────────────────────
