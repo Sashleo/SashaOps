@@ -1,0 +1,101 @@
+{% import "psx/_macros.html" as m %}
+
+<!-- Profile summary -->
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:var(--s-2)">
+    <div class="card-title" style="margin:0">Company Profile</div>
+    <div style="display:flex;align-items:center;gap:var(--s-3)">
+      <span id="refresh-status-{{ a.ticker }}" style="font-size:0.8em"></span>
+      <button class="btn btn-sm btn-ghost"
+              hx-post="/psx/{{ a.ticker }}/refresh-profile"
+              hx-target="#refresh-status-{{ a.ticker }}"
+              hx-swap="innerHTML"
+              hx-indicator="#refresh-spin-{{ a.ticker }}">
+        <span id="refresh-spin-{{ a.ticker }}" class="htmx-indicator" style="font-size:0.75em">↻</span>
+        Refresh profile
+      </button>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:var(--s-3);font-size:0.875rem">
+    {% if a.profile.get('chief_executive') %}
+    <div><span style="color:var(--text-muted)">CEO</span><br>{{ a.profile.chief_executive }}</div>
+    {% endif %}
+    {% if a.profile.get('chairman') %}
+    <div><span style="color:var(--text-muted)">Chairman</span><br>{{ a.profile.chairman }}</div>
+    {% endif %}
+    {% if a.shares_outstanding %}
+    <div><span style="color:var(--text-muted)">Shares outstanding</span><br><span class="tabnum">{{ '{:,.0f}'.format(a.shares_outstanding) }}</span></div>
+    {% endif %}
+    {% if a.profile.get('free_float') %}
+    <div><span style="color:var(--text-muted)">Free float</span><br>{{ a.profile.free_float }}%</div>
+    {% endif %}
+    {% if a.profile.get('website') %}
+    <div><span style="color:var(--text-muted)">Website</span><br>{{ a.profile.website }}</div>
+    {% endif %}
+  </div>
+  {% if a.profile.get('description') %}
+  <div style="font-size:0.875rem;color:var(--text-muted);margin-top:var(--s-3);line-height:1.5">
+    {{ a.profile.description[:300] }}{% if a.profile.description|length > 300 %}...{% endif %}
+  </div>
+  {% endif %}
+  {{ m.requirements(a, 'profile') }}
+  {{ m.source_line(a, 'profile') }}
+</div>
+
+<!-- Verdict tiles -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:var(--s-3);margin-top:var(--s-4)">
+  <!-- Health -->
+  <div class="verdict {% if a.health_score.score is not none %}{% if a.health_score.score >= 7 %}verdict--pos{% elif a.health_score.score >= 4 %}verdict--warn{% else %}verdict--neg{% endif %}{% endif %}">
+    <div class="verdict-label">Health</div>
+    <div class="verdict-body">
+      {% if a.health_score.score is not none %}
+        {{ a.health_score.score }}/10 ({{ a.health_score.confidence }})
+      {% else %}Not scored{% endif %}
+    </div>
+  </div>
+  <!-- Distress -->
+  <div class="verdict {% if a.altman %}{% if a.altman.zone == 'SAFE' %}verdict--pos{% elif a.altman.zone == 'GREY' %}verdict--warn{% else %}verdict--neg{% endif %}{% endif %}">
+    <div class="verdict-label">Distress</div>
+    <div class="verdict-body">
+      {% if a.altman and a.altman.computable %}
+        {{ a.altman.zone }} zone. Z = {{ '{:,.2f}'.format(a.altman.score.value) if a.altman.score and a.altman.score.value is not none else 'N/A' }}
+      {% else %}
+        <a href="/psx/{{ a.ticker }}?tab=entry" class="req-link">Needs balance sheet data</a>
+      {% endif %}
+    </div>
+  </div>
+  <!-- Valuation -->
+  {% set latest = a.latest_period %}
+  {% set R = a.ratios.get(latest, {}) if latest else {} %}
+  {% set pe = R.get('pe') %}
+  <div class="verdict verdict--info">
+    <div class="verdict-label">Valuation</div>
+    <div class="verdict-body">
+      {% if pe and pe.value is not none %}
+        P/E {{ '{:,.1f}'.format(pe.value) }}x
+        {% set pe_med = a.sector_medians.get('pe') %}
+        {% if pe_med and pe_med.median is not none %}
+          vs sector {{ '{:,.1f}'.format(pe_med.median) }}x
+        {% endif %}
+      {% else %}
+        <a href="/psx/{{ a.ticker }}?tab=entry&focus=eps" class="req-link">Needs EPS</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Overview charts (up to 4) -->
+<div class="grid--charts" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));gap:var(--s-4);margin-top:var(--s-5)">
+  {% for key in ['chart2', 'chart1', 'chart4', 'chart8'] %}
+  {% set c = a.charts.get(key) %}
+  {% if c and c.renderable %}
+  <figure class="chart-card card" style="padding:var(--s-4)">
+    <figcaption>{{ c.title }}</figcaption>
+    <button class="chart-open" type="button" aria-label="Open chart: {{ c.title }}">
+      <div class="chart-frame"><canvas data-sashaops-chart="{{ c.spec_json|e }}"></canvas></div>
+    </button>
+    <p class="chart-source">{{ c.source }}</p>
+  </figure>
+  {% endif %}
+  {% endfor %}
+</div>

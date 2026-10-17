@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}PSX Analyser - SashaOps{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="page-title">PSX Analyser</div>
+</div>
+
+<div class="card mb-24">
+  <div class="card-title">Find a company</div>
+  <input type="search" name="q" placeholder="Ticker or company name"
+         autocomplete="off"
+         hx-get="/psx/search"
+         hx-trigger="keyup changed delay:200ms, search"
+         hx-target="#psx-search-results"
+         class="form-input" style="width:100%">
+  <div id="psx-search-results"></div>
+</div>
+
+<div class="card">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s-3)">
+    <div class="card-title" style="margin:0">Analysable companies</div>
+    <form method="get" action="/psx" style="margin:0">
+      <select name="sector" onchange="this.form.submit()" class="form-input" style="font-size:0.85em;padding:4px 8px">
+        <option value="">All sectors</option>
+        {% for s in sectors %}
+        <option value="{{ s }}" {% if s == selected_sector %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+
+  {% if recent %}
+  <div style="overflow-x:auto">
+  <table class="data-table">
+    <thead>
+    <tr>
+      <th>Ticker</th>
+      <th>Company</th>
+      <th>Sector</th>
+      <th style="text-align:right">Periods</th>
+      <th style="text-align:right">Market cap (PKR)</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for r in recent %}
+    <tr>
+      <td><a href="/psx/{{ r.symbol }}" style="color:var(--accent);font-family:var(--font-mono)">{{ r.symbol }}</a></td>
+      <td>{{ r.company_name }}</td>
+      <td style="color:var(--text-muted)">{{ r.sector_name or 'Not classified' }}</td>
+      <td style="text-align:right;font-family:var(--font-mono)">{{ r.periods }}</td>
+      <td style="text-align:right;font-family:var(--font-mono);color:var(--text-muted)">
+        {{ '{:,.0f}'.format(r.market_cap) if r.market_cap else 'Required: market cap' }}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div style="font-size:0.75rem;color:var(--text-muted);margin-top:var(--s-2)">
+    Companies with at least one parsed annual period. Ordered by most recently refreshed.
+  </div>
+  {% else %}
+  <div style="font-size:0.875rem;color:var(--text-muted)">
+    Required: parsed annual financials. No company in
+    {{ selected_sector or 'any sector' }} has a stored annual period yet. Run the
+    PSX financials job from the Dashboard Data Health card.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

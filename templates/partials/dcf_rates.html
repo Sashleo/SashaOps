@@ -1,0 +1,74 @@
+{# partials/dcf_rates.html — DCF Rates panel, swapped by HTMX #}
+<div id="dcf-rates-panel">
+
+{% for r in rates %}
+<div style="padding:var(--s-3) 0;{% if not loop.last %}border-bottom:1px solid var(--border);{% endif %}">
+
+  {# Row: label + badge + resolved value + action buttons #}
+  <div style="display:flex;align-items:flex-start;gap:var(--s-3)">
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:var(--s-2);flex-wrap:wrap">
+        <span style="font-size:0.88rem;font-weight:600">{{ r.label }}</span>
+        {% if r.source == 'override' %}
+          <span class="badge badge--warn" style="font-size:0.7rem;letter-spacing:0.02em">Manual override</span>
+        {% elif r.source == 'live' %}
+          <span class="badge badge--pos" style="font-size:0.7rem;letter-spacing:0.02em">Live &middot; {{ r.live_label }}</span>
+        {% else %}
+          <span class="badge" style="font-size:0.7rem;letter-spacing:0.02em;opacity:0.7"
+                title="Scraper not yet run — using a hardcoded Pakistan-calibrated constant">
+            Default &middot; {{ '%.2f'|format(r.fallback) }}%
+          </span>
+        {% endif %}
+      </div>
+      <div style="font-size:0.76rem;color:var(--text-muted);margin-top:3px;line-height:1.4">{{ r.notes }}</div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:var(--s-2);flex-shrink:0;padding-top:2px">
+      <span style="font-size:1.1rem;font-weight:700;color:var(--accent);min-width:3.8rem;text-align:right">
+        {{ '%.2f'|format(r.resolved) }}%
+      </span>
+      <button class="btn btn-sm btn-ghost"
+              style="font-size:0.72rem;padding:3px 8px"
+              onclick="(function(){var p=document.getElementById('edit-{{ r.key }}');p.hidden=!p.hidden})()">
+        Edit
+      </button>
+      {% if r.source == 'override' %}
+      <form hx-post="/settings/dcf-rates/{{ r.key }}/reset"
+            hx-target="#dcf-rates-panel"
+            hx-swap="outerHTML"
+            hx-confirm="Remove your manual override for {{ r.label }} and restore the live/default value?"
+            style="display:inline;margin:0">
+        <button type="submit" class="btn btn-sm btn-ghost"
+                style="font-size:0.72rem;padding:3px 8px;color:var(--text-muted)">
+          Reset
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Inline edit form (hidden by default) #}
+  <div id="edit-{{ r.key }}" hidden style="margin-top:var(--s-2)">
+    <form hx-post="/settings/dcf-rates/{{ r.key }}"
+          hx-target="#dcf-rates-panel"
+          hx-swap="outerHTML"
+          hx-on::after-request="document.getElementById('edit-{{ r.key }}').hidden=true"
+          style="display:flex;gap:var(--s-2);align-items:flex-end;flex-wrap:wrap">
+      <div class="form-group" style="margin:0">
+        <label class="form-label" style="font-size:0.78rem">Override value (%)</label>
+        <input class="form-input" type="number" name="value" step="0.01" min="0" max="100"
+               value="{{ '%.2f'|format(r.override_value if r.override_value is not none else r.resolved) }}"
+               style="width:7rem" required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">Save</button>
+      <button type="button" class="btn btn-sm"
+              onclick="document.getElementById('edit-{{ r.key }}').hidden=true">
+        Cancel
+      </button>
+    </form>
+  </div>
+
+</div>
+{% endfor %}
+
+</div>

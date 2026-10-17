@@ -1,0 +1,102 @@
+<div class="card" style="margin-top:20px">
+  <div class="card-title">DCF Valuation — {{ a.ticker }}</div>
+
+  {% if dcf.computable %}
+  <div style="overflow-x:auto">
+  <table style="width:100%; font-size:0.85em; border-collapse:collapse">
+    <tr><td style="padding:5px 8px; color:var(--text-muted)">WACC</td>
+        <td style="padding:5px 8px; font-family:var(--font-mono); text-align:right">{{ '{:,.2f}'.format(dcf.wacc * 100) }}%</td></tr>
+    <tr><td style="padding:5px 8px; color:var(--text-muted)">Enterprise value</td>
+        <td style="padding:5px 8px; font-family:var(--font-mono); text-align:right">PKR {{ '{:,.0f}'.format(dcf.enterprise_value) }}</td></tr>
+    {% if dcf.equity_value is not none %}
+    <tr><td style="padding:5px 8px; color:var(--text-muted)">Equity value</td>
+        <td style="padding:5px 8px; font-family:var(--font-mono); text-align:right">PKR {{ '{:,.0f}'.format(dcf.equity_value) }}</td></tr>
+    {% endif %}
+    {% if dcf.per_share is not none %}
+    <tr><td style="padding:5px 8px; color:var(--text-muted)">Per share</td>
+        <td style="padding:5px 8px; font-family:var(--font-mono); text-align:right">PKR {{ '{:,.2f}'.format(dcf.per_share) }}</td></tr>
+    {% endif %}
+    {% if dcf.current_price is not none and dcf.per_share is not none %}
+    <tr><td style="padding:5px 8px; color:var(--text-muted)">Market price</td>
+        <td style="padding:5px 8px; font-family:var(--font-mono); text-align:right">PKR {{ '{:,.2f}'.format(dcf.current_price) }}</td></tr>
+    <tr><td style="padding:5px 8px; color:var(--text-muted)">Upside / downside</td>
+        <td style="padding:5px 8px; font-family:var(--font-mono); text-align:right;
+            color:{% if dcf.per_share > dcf.current_price %}var(--accent){% else %}var(--neg){% endif %}">
+          {{ '{:+,.1f}'.format((dcf.per_share / dcf.current_price - 1) * 100) }}%</td></tr>
+    {% endif %}
+    <tr><td style="padding:5px 8px; color:var(--text-muted)">Terminal value share of EV</td>
+        <td style="padding:5px 8px; font-family:var(--font-mono); text-align:right">{{ '{:,.1f}'.format(dcf.tv_share_of_ev) }}%</td></tr>
+  </table>
+  </div>
+
+  {% if dcf.warnings %}
+  <div style="margin-top:12px">
+    {% for w in dcf.warnings %}
+    <div style="background:var(--bg-3);border-left:3px solid var(--warn);padding:7px 10px;
+                border-radius:0 var(--radius) var(--radius) 0;font-size:0.8em;color:var(--warn);margin-bottom:4px">
+      &#9888; {{ w }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if dcf.sensitivity_grid %}
+  <div style="margin-top:16px">
+    <div style="font-size:0.75em; text-transform:uppercase; letter-spacing:1px; color:var(--text-dim); margin-bottom:4px">
+      Sensitivity: per-share value vs WACC and terminal growth
+    </div>
+    {% if dcf.current_price is not none %}
+    <div style="font-size:0.78em; color:var(--text-muted); margin-bottom:6px">
+      Current price: PKR {{ '{:,.2f}'.format(dcf.current_price) }}
+      &nbsp;·&nbsp; Base case: PKR {{ '{:,.2f}'.format(dcf.per_share) if dcf.per_share is not none else '—' }}
+    </div>
+    {% endif %}
+    <div style="overflow-x:auto">
+    <table style="font-size:0.8em; border-collapse:collapse">
+      <tr>
+        <th style="padding:4px 6px; color:var(--text-dim)"></th>
+        {% for w in dcf.sensitivity_grid.wacc_range %}
+        <th style="padding:4px 6px; color:var(--text-dim); text-align:right">{{ '{:.1f}'.format(w*100) }}%</th>
+        {% endfor %}
+      </tr>
+      {% for i, g in enumerate(dcf.sensitivity_grid.growth_range) %}
+      <tr>
+        <td style="padding:4px 6px; color:var(--text-dim)">g={{ '{:.1f}'.format(g*100) }}%</td>
+        {% for j in range(dcf.sensitivity_grid.wacc_range | length) %}
+        {% set val = dcf.sensitivity_grid.values[i][j] %}
+        {% set base = dcf.per_share if dcf.per_share else 0 %}
+        {% set pct = ((val - base) / base * 100) if base else 0 %}
+        {% if pct > 20 %}{% set bg = 'rgba(0,180,90,0.40)' %}
+        {% elif pct > 10 %}{% set bg = 'rgba(0,180,90,0.25)' %}
+        {% elif pct > 3 %}{% set bg = 'rgba(0,180,90,0.12)' %}
+        {% elif pct < -20 %}{% set bg = 'rgba(220,60,60,0.40)' %}
+        {% elif pct < -10 %}{% set bg = 'rgba(220,60,60,0.25)' %}
+        {% elif pct < -3 %}{% set bg = 'rgba(220,60,60,0.12)' %}
+        {% else %}{% set bg = 'var(--bg-2)' %}{% endif %}
+        {% set is_base = (pct > -3 and pct < 3) %}
+        <td style="padding:4px 6px; font-family:var(--font-mono); text-align:right;
+            background:{{ bg }};
+            border-bottom:1px solid var(--bg-2);
+            {% if is_base %}outline:1px solid var(--accent);outline-offset:-1px;{% endif %}">
+          {{ '{:,.0f}'.format(val) }}
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </table>
+    </div>
+    <div style="font-size:0.72em; color:var(--text-dim); margin-top:4px">
+      Green = above base case &nbsp;·&nbsp; Red = below &nbsp;·&nbsp; Outlined = within ±3% of base case
+    </div>
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div style="font-size:0.85em; color:var(--text-muted)">
+    DCF could not be computed.
+    {% if dcf.missing %}
+    Missing: {{ ', '.join(dcf.missing) }}.
+    {% endif %}
+  </div>
+  {% endif %}
+</div>

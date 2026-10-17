@@ -1,0 +1,44 @@
+# Fixed regression test targets for the live scraper battery (Phase 2 Task 2.4).
+#
+# Keys under gov_scrapers use each scraper's ACTUAL scraper_id (verified against
+# the classes in intelligence/gov_scrapers/*.py and intelligence/exchange_scrapers/),
+# not the plan's illustrative names - e.g. the forex scraper's id is "sbp_forex"
+# (intelligence/exchange_scrapers/central_banks/sbp_pakistan.py), not "forex_rates",
+# and PBS's id is "pbs_lsmi", not "pbs_stats". Using the real ids lets the test
+# instantiate each scraper class directly by id without a lookup mismatch.
+
+psx_tickers:
+  banks:      [HBL, MCB, UBL, MEBL, BAHL]
+  cement:     [LUCK, DGKC, MLCF, CHCC]
+  fertilizer: [FFC, EFERT, ENGRO]
+  oil_gas:    [OGDC, PPL, POL, PSO]
+  pharma:     [GLAXO, ABOT, BFBIO]
+  power:      [HUBC, KAPCO]
+  tech:       [SYS, TRG]
+  textile:    [ILP, NML]
+
+gov_scrapers:
+  sbp_monetary:
+    freshness_hours: 720
+    min_rows: 1
+  sbp_forex:
+    freshness_hours: 24
+    min_rows: 5
+  fbr_revenue:
+    freshness_hours: 720
+    min_rows: 1
+  nepra_power:
+    freshness_hours: 168
+    min_rows: 1
+  ogra_prices:
+    freshness_hours: 336
+    min_rows: 1
+  pbs_lsmi:
+    freshness_hours: 720
+    min_rows: 2
+  pta_stats:
+    freshness_hours: 720
+    min_rows: 1
+  worldbank_pak:
+    freshness_hours: 8760
+    min_rows: 5

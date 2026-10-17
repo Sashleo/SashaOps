@@ -1,0 +1,103 @@
+/* tokens.css -- Single source of truth for every colour, size and space.
+   No component uses a raw hex value. Charts read these at draw time. */
+
+/* ── Fonts ────────────────────────────────────────────────────────────────── */
+@font-face { font-family:'Plex'; src:url('/static/fonts/ibm-plex-sans-latin-400-normal.woff2') format('woff2'); font-weight:400; font-style:normal; font-display:swap; }
+@font-face { font-family:'Plex'; src:url('/static/fonts/ibm-plex-sans-latin-500-normal.woff2') format('woff2'); font-weight:500; font-style:normal; font-display:swap; }
+@font-face { font-family:'Plex'; src:url('/static/fonts/ibm-plex-sans-latin-600-normal.woff2') format('woff2'); font-weight:600; font-style:normal; font-display:swap; }
+@font-face { font-family:'Plex Mono'; src:url('/static/fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2'); font-weight:400; font-style:normal; font-display:swap; }
+@font-face { font-family:'Plex Mono'; src:url('/static/fonts/ibm-plex-mono-latin-500-normal.woff2') format('woff2'); font-weight:500; font-style:normal; font-display:swap; }
+
+/* ── Light theme (default) ────────────────────────────────────────────────── */
+:root {
+  --font-sans: 'Plex', system-ui, sans-serif;
+  --font-mono: 'Plex Mono', ui-monospace, monospace;
+
+  --bg:       #F4F6F9;
+  --surface:  #FFFFFF;
+  --surface-2:#EEF2F6;
+  --border:   #D5DCE5;
+  --text:     #0F172A;
+  --text-muted:#475569;
+  --accent:   #0F766E;
+  --pos:      #15803D;
+  --neg:      #B91C1C;
+  --warn:     #B45309;
+  --info:     #1D4ED8;
+  --scan:     #6D28D9;
+
+  /* Chart series (validated categorical) */
+  --series-1: #2A78D6;
+  --series-2: #EB6834;
+  --series-3: #1BAF7A;
+  --series-4: #EDA100;
+
+  /* Spacing (4px base, in rem) */
+  --s-1: 0.25rem; --s-2: 0.5rem; --s-3: 0.75rem; --s-4: 1rem;
+  --s-5: 1.5rem;  --s-6: 2rem;   --s-7: 3rem;    --s-8: 4rem;
+
+  /* Shape */
+  --radius:    0.5rem;
+  --radius-sm: 0.375rem;
+
+  /* Sidebar */
+  --sidebar-w: 13rem;
+
+  /* Chart heights */
+  --chart-h-mini:   12.5rem;
+  --chart-h-inline: 16rem;
+  --chart-h-modal:  min(70dvh, 35rem);
+
+  /* Ease */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur: 150ms;
+
+  /* Compat aliases for old section templates (remove in U9) */
+  --bg-2: var(--border);
+  --bg-3: var(--surface-2);
+  --text-dim: var(--text-muted);
+  --text-secondary: var(--text-muted);
+  --text-primary: var(--text);
+}
+
+/* ── Dark theme: prefers-color-scheme ─────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:       #0F111A;
+    --surface:  #161B26;
+    --surface-2:#1E2530;
+    --border:   #2B3544;
+    --text:     #E2E8F0;
+    --text-muted:#94A3B8;
+    --accent:   #2DD4BF;
+    --pos:      #34D399;
+    --neg:      #F87171;
+    --warn:     #FBBF24;
+    --info:     #60A5FA;
+    --scan:     #A78BFA;
+    --series-1: #3987E5;
+    --series-2: #D95926;
+    --series-3: #199E70;
+    --series-4: #C98500;
+  }
+}
+
+/* ── Dark theme: explicit toggle ──────────────────────────────────────────── */
+:root[data-theme="dark"] {
+  --bg:       #0F111A;
+  --surface:  #161B26;
+  --surface-2:#1E2530;
+  --border:   #2B3544;
+  --text:     #E2E8F0;
+  --text-muted:#94A3B8;
+  --accent:   #2DD4BF;
+  --pos:      #34D399;
+  --neg:      #F87171;
+  --warn:     #FBBF24;
+  --info:     #60A5FA;
+  --scan:     #A78BFA;
+  --series-1: #3987E5;
+  --series-2: #D95926;
+  --series-3: #199E70;
+  --series-4: #C98500;
+}

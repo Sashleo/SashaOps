@@ -1,0 +1,14 @@
+{% set n = 2 %}{% set title = "Statement of Financial Position" %}{% set note = "Annual report, where extractable" %}
+<div class="card">
+  {% include "psx/section_02_balance.html" %}
+</div>
+
+{% set n = 3 %}{% set title = "Statement of Profit or Loss" %}{% set note = "PSX financial statements, annual periods" %}
+<div class="card">
+  {% include "psx/section_03_income.html" %}
+</div>
+
+{% set n = 4 %}{% set title = "Statement of Cash Flows" %}{% set note = "Annual report, where extractable" %}
+<div class="card">
+  {% include "psx/section_04_cashflow.html" %}
+</div>

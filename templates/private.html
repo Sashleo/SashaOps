@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block title %}Private Analyser - SashaOps{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-title">Private Analyser</div>
+    <div style="font-size:0.85em; color:var(--text-muted); margin-top:4px">
+      Enter financial data for a private company. All figures stay local and encrypted.
+      {% if prefill %}<span style="color:var(--accent)">· Loaded from saved entry</span>{% endif %}
+    </div>
+  </div>
+  <div style="display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap; margin-top:4px">
+    <button class="btn btn-sm btn-ghost" onclick="document.getElementById('new-client-form').toggleAttribute('hidden')">
+      + New client
+    </button>
+    {% if result %}
+    <button onclick="window.print()" class="btn btn-sm">Print / PDF</button>
+    {% endif %}
+  </div>
+</div>
+
+<div id="new-client-form" hidden style="margin-bottom:var(--s-4)">
+  <div class="card">
+    <div class="card-title">Create new client</div>
+    <form hx-post="/settings/clients"
+          hx-on::after-request="document.getElementById('new-client-form').setAttribute('hidden',''); window.location.reload()"
+          style="display:flex;gap:var(--s-3);flex-wrap:wrap;align-items:flex-end">
+      <div class="form-group" style="margin:0;flex:1;min-width:12rem">
+        <label class="form-label" for="new-client-name">Client name</label>
+        <input id="new-client-name" class="form-input" type="text" name="name" required placeholder="e.g. Acme Industries">
+      </div>
+      <div class="form-group" style="margin:0;flex:1;min-width:10rem">
+        <label class="form-label" for="new-client-industry">Industry (optional)</label>
+        <input id="new-client-industry" class="form-input" type="text" name="industry" placeholder="e.g. Textile">
+      </div>
+      <button type="submit" class="btn btn-primary">Create &amp; select</button>
+    </form>
+  </div>
+</div>
+
+{% if saved_flash %}
+<div style="background:var(--bg-3);border:1px solid var(--accent);color:var(--accent);
+            padding:8px 14px;border-radius:var(--radius);margin-bottom:12px;font-size:0.88em">
+  Entry saved for <strong>{{ active_client.name }}</strong>. Data will pre-fill this form next visit.
+</div>
+{% endif %}
+{% if no_client_flash %}
+<div style="background:var(--bg-3);border:1px solid var(--warn);color:var(--warn);
+            padding:8px 14px;border-radius:var(--radius);margin-bottom:12px;font-size:0.88em">
+  No client selected — entry was not saved. Create or select a client first.
+</div>
+{% endif %}
+
+{% if active_client %}
+<div class="card" style="margin-bottom:var(--s-4)">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:var(--s-2);margin-bottom:var(--s-3)">
+    <div class="card-title" style="margin:0">
+      Saved entries
+      {% if entries %}<span style="font-size:0.78em;font-weight:400;color:var(--text-muted)">({{ entries|length }})</span>{% endif %}
+    </div>
+    <a href="/private/entries" class="btn btn-sm btn-ghost"
+       hx-get="/private/entries"
+       hx-target="#entries-panel"
+       hx-swap="innerHTML">↻ Refresh</a>
+  </div>
+  <div id="entries-panel">
+    {% include "private_entries.html" %}
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  {% include "components/entry_form.html" %}
+</div>
+
+{% if result %}
+<div class="card" style="margin-top:20px">
+  <div class="card-title">Analysis: {{ result.company_name or "Private company" }}</div>
+
+  {% if result.identity_checks %}
+  <div style="background:var(--bg-3); padding:10px; border-radius:var(--radius); margin-bottom:14px; font-size:0.85em; color:var(--warn)">
+    <strong>Identity checks failed:</strong>
+    {% for c in result.identity_checks %}
+    <div>{{ c }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if result.ratios %}
+  <div class="entry-section">
+    <div class="entry-section-title">Ratios</div>
+    <div style="overflow-x:auto">
+    <table class="ratio-table">
+      {% for name, val in result.ratios.items() %}
+      {% if val is not none %}
+      <tr>
+        <td style="color:var(--text-muted)">{{ name | replace('_',' ') | title }}</td>
+        <td style="font-family:var(--font-mono); text-align:right">
+          {% if 'margin' in name or 'roe' in name or 'roa' in name or 'growth' in name %}
+            {{ '{:,.2f}'.format(val * 100) }}%
+          {% else %}
+            {{ '{:,.2f}'.format(val) }}
+          {% endif %}
+        </td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if result.dupont and result.dupont.roe_computed is not none %}
+  <div class="entry-section">
+    <div class="entry-section-title">DuPont decomposition</div>
+    <div style="display:flex; gap:20px; flex-wrap:wrap; font-size:0.88em">
+      <div><span style="color:var(--text-dim)">Net margin</span>
+        <div style="font-family:var(--font-mono)">{{ '{:,.2f}'.format(result.dupont.net_margin * 100) }}%</div></div>
+      <div><span style="color:var(--text-dim)">Asset turnover</span>
+        <div style="font-family:var(--font-mono)">{{ '{:,.2f}'.format(result.dupont.asset_turnover) }}x</div></div>
+      <div><span style="color:var(--text-dim)">Equity multiplier</span>
+        <div style="font-family:var(--font-mono)">{{ '{:,.2f}'.format(result.dupont.equity_multiplier) }}x</div></div>
+      <div><span style="color:var(--text-dim)">ROE</span>
+        <div style="font-family:var(--font-mono); color:var(--accent)">{{ '{:,.2f}'.format(result.dupont.roe_computed * 100) }}%</div></div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if result.altman and result.altman.computable %}
+  <div class="entry-section">
+    <div class="entry-section-title">Altman Z-Score</div>
+    <div style="font-size:0.88em">
+      <span style="font-family:var(--font-mono); font-size:1.1em">{{ '{:,.2f}'.format(result.altman.z_score) }}</span>
+      <span class="zone-badge zone-{{ result.altman.zone | lower }}">{{ result.altman.zone }}</span>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if result.dcf and result.dcf.computable %}
+  <div class="entry-section">
+    <div class="entry-section-title">DCF valuation</div>
+    {% if result.dcf.warnings %}
+    <div style="margin-bottom:8px">
+      {% for w in result.dcf.warnings %}
+      <div style="background:var(--bg-3);border-left:3px solid var(--warn);padding:6px 9px;
+                  border-radius:0 var(--radius) var(--radius) 0;font-size:0.78em;color:var(--warn);margin-bottom:3px">
+        &#9888; {{ w }}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <div style="overflow-x:auto">
+    <table class="ratio-table">
+      <tr><td style="color:var(--text-dim)">WACC</td>
+          <td style="font-family:var(--font-mono); text-align:right">{{ '{:,.2f}'.format(result.dcf.wacc * 100) }}%</td></tr>
+      <tr><td style="color:var(--text-dim)">Enterprise value</td>
+          <td style="font-family:var(--font-mono); text-align:right">{{ '{:,.0f}'.format(result.dcf.enterprise_value) }}</td></tr>
+      {% if result.dcf.equity_value is not none %}
+      <tr><td style="color:var(--text-dim)">Equity value</td>
+          <td style="font-family:var(--font-mono); text-align:right">{{ '{:,.0f}'.format(result.dcf.equity_value) }}</td></tr>
+      {% endif %}
+      {% if result.dcf.per_share is not none %}
+      <tr><td style="color:var(--text-dim)">Per share</td>
+          <td style="font-family:var(--font-mono); text-align:right">PKR {{ '{:,.2f}'.format(result.dcf.per_share) }}</td></tr>
+      {% endif %}
+      <tr><td style="color:var(--text-dim)">TV share of EV</td>
+          <td style="font-family:var(--font-mono); text-align:right">{{ '{:,.1f}'.format(result.dcf.tv_share_of_ev) }}%</td></tr>
+    </table>
+    </div>
+  </div>
+  {% elif result.dcf and not result.dcf.computable %}
+  <div class="entry-section">
+    <div class="entry-section-title">DCF valuation</div>
+    <div style="font-size:0.85em; color:var(--text-muted)">
+      Cannot compute. Fill in the required fields:
+      {% for f in result.dcf.missing %}
+        <span style="font-weight:600">{{ f.replace('_', ' ') | title }}</span>{% if not loop.last %}, {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if result.health %}
+  <div class="entry-section">
+    <div class="entry-section-title">Health score</div>
+    <div style="font-family:var(--font-mono); font-size:1.1em">
+      {% if result.health.score is not none %}
+        {{ result.health.score }}/10
+        <span style="font-size:0.75em; color:var(--text-dim)">({{ result.health.confidence }} confidence, {{ result.health.basis }}/6 checks)</span>
+      {% else %}
+        <span style="color:var(--text-dim)">{{ result.health.note }}</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if result.growth %}
+  <div class="entry-section">
+    <div class="entry-section-title">Growth</div>
+    <div style="overflow-x:auto">
+    <table class="ratio-table">
+      {% for name, val in result.growth.items() %}
+      {% if val is not none %}
+      <tr>
+        <td style="color:var(--text-muted)">{{ name | replace('_',' ') | title }}</td>
+        <td style="font-family:var(--font-mono); text-align:right">{{ '{:,.2f}'.format(val * 100) }}%</td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </table>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

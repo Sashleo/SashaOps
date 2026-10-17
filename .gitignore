@@ -1,0 +1,15 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+data/sashaops.db
+data/documents/
+*.db
+*.db-wal
+*.db-shm
+reports/generated/
+.tmp/
+credentials.json
+token.json
+.cache/

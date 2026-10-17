@@ -1,0 +1,74 @@
+<div style="margin-top:var(--s-4)">
+
+  {% if r.valid %}
+  <div class="notice" style="border-left:3px solid var(--pos);padding:var(--s-3) var(--s-4);background:color-mix(in srgb, var(--pos) 8%, var(--surface));border-radius:var(--radius);margin-bottom:var(--s-4)">
+    <strong style="color:var(--pos)">Chain intact</strong> — {{ r.checked }} of {{ r.total }} entries verified, no tampering detected.
+  </div>
+  {% else %}
+  <div class="notice" style="border-left:3px solid var(--neg);padding:var(--s-3) var(--s-4);background:color-mix(in srgb, var(--neg) 8%, var(--surface));border-radius:var(--radius);margin-bottom:var(--s-4)">
+    <strong style="color:var(--neg)">Chain broken at entry #{{ r.broken_id }}</strong><br>
+    <span style="font-size:0.85em;color:var(--text-muted)">{{ r.reason }}</span>
+  </div>
+  {% endif %}
+
+  {% if r.total > 0 %}
+  <div style="font-size:0.85rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr));gap:var(--s-4);margin-bottom:var(--s-4)">
+    <div>
+      <div style="color:var(--text-muted);font-size:0.75rem;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:var(--s-1)">Verification summary</div>
+      <table style="font-size:0.85rem;border-collapse:collapse;width:100%">
+        <tr><td style="padding:3px 0;color:var(--text-muted)">Total entries</td><td style="padding:3px 0;font-family:var(--font-mono);text-align:right">{{ r.total }}</td></tr>
+        <tr><td style="padding:3px 0;color:var(--text-muted)">Entries checked</td><td style="padding:3px 0;font-family:var(--font-mono);text-align:right">{{ r.checked }}</td></tr>
+        <tr><td style="padding:3px 0;color:var(--text-muted)">Hash algorithm</td><td style="padding:3px 0;font-family:var(--font-mono);text-align:right">SHA-256</td></tr>
+        <tr><td style="padding:3px 0;color:var(--text-muted)">Genesis hash</td><td style="padding:3px 0;font-family:var(--font-mono);text-align:right;font-size:0.8em">{{ r.genesis }}</td></tr>
+        {% if r.head_hash %}
+        <tr><td style="padding:3px 0;color:var(--text-muted)">Head hash</td><td style="padding:3px 0;font-family:var(--font-mono);text-align:right;font-size:0.8em">{{ r.head_hash }}</td></tr>
+        {% endif %}
+        <tr><td style="padding:3px 0;color:var(--text-muted)">First entry</td><td style="padding:3px 0;font-family:var(--font-mono);text-align:right">{{ r.first_ts[:19] if r.first_ts else '--' }}</td></tr>
+        <tr><td style="padding:3px 0;color:var(--text-muted)">Last entry</td><td style="padding:3px 0;font-family:var(--font-mono);text-align:right">{{ r.last_ts[:19] if r.last_ts else '--' }}</td></tr>
+      </table>
+    </div>
+    <div>
+      <div style="color:var(--text-muted);font-size:0.75rem;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:var(--s-1)">Events by type</div>
+      <table style="font-size:0.85rem;border-collapse:collapse;width:100%">
+        {% for etype, count in r.event_counts.items() | sort(attribute='1', reverse=true) %}
+        <tr>
+          <td style="padding:2px 0;color:var(--text-muted)">{{ etype }}</td>
+          <td style="padding:2px 0;font-family:var(--font-mono);text-align:right">{{ count }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+
+  {% if r.sample_hashes %}
+  <div style="margin-top:var(--s-3)">
+    <div style="color:var(--text-muted);font-size:0.75rem;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:var(--s-1)">Hash chain samples</div>
+    <div style="overflow-x:auto">
+    <table style="font-size:0.8rem;border-collapse:collapse;width:100%">
+      <tr style="color:var(--text-muted);border-bottom:1px solid var(--border)">
+        <th style="text-align:left;padding:4px 8px;font-weight:500">ID</th>
+        <th style="text-align:left;padding:4px 8px;font-weight:500">Event</th>
+        <th style="text-align:left;padding:4px 8px;font-weight:500">Timestamp</th>
+        <th style="text-align:left;padding:4px 8px;font-weight:500">Entry hash</th>
+      </tr>
+      {% for s in r.sample_hashes %}
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:4px 8px;font-family:var(--font-mono)">{{ s.id }}</td>
+        <td style="padding:4px 8px">{{ s.event }}</td>
+        <td style="padding:4px 8px;font-family:var(--font-mono)">{{ s.ts[:19] }}</td>
+        <td style="padding:4px 8px;font-family:var(--font-mono);font-size:0.85em;color:var(--text-muted)">{{ s.hash }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    </div>
+    <div style="font-size:0.75rem;color:var(--text-muted);margin-top:var(--s-2)">
+      Each entry's hash is SHA-256(event_type + user_id + client_id + details + ip + timestamp + prev_hash). Modifying or deleting any entry breaks the chain.
+    </div>
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div style="font-size:0.85rem;color:var(--text-muted)">No audit log entries found. Events will appear after the first login or action.</div>
+  {% endif %}
+
+</div>

@@ -1,0 +1,44 @@
+<div class="card">
+  <div class="card-title">Data Entry</div>
+  <p style="font-size:0.875rem;color:var(--text-muted);margin-bottom:var(--s-3)">
+    Scanner data pre-filled from {{ a.latest_period or "N/A" }}.
+    Fill or override any field, then click <strong>Analyse</strong> to re-run ratios,
+    DuPont, distress and DCF with your values.
+  </p>
+
+  {% include "components/entry_form.html" %}
+
+  <div id="dcf-result"></div>
+</div>
+
+<script>
+(function(){
+  const params = new URLSearchParams(location.search);
+  const focus = params.get('focus');
+  if (focus) {
+    const el = document.getElementById('f_' + focus);
+    if (el) { el.focus(); el.scrollIntoView({block:'center'}); }
+  }
+
+  const form = document.querySelector('.entry-form');
+  if (!form) return;
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    const submitBtn = e.submitter;
+    const action = (submitBtn && submitBtn.getAttribute('formaction')) || form.action;
+    const fd = new FormData(form);
+    const resultDiv = document.getElementById('dcf-result');
+    resultDiv.innerHTML = '<div style="padding:var(--s-3);color:var(--text-muted);font-size:0.85em">Calculating…</div>';
+    fetch(action, {method:'POST', body: fd, credentials:'same-origin'})
+      .then(r => r.text())
+      .then(html => {
+        resultDiv.innerHTML = html;
+        resultDiv.scrollIntoView({block:'nearest', behavior:'smooth'});
+      })
+      .catch(() => {
+        resultDiv.innerHTML =
+          '<div style="margin-top:var(--s-3);color:var(--neg)">Request failed. Check your connection.</div>';
+      });
+  });
+})();
+</script>

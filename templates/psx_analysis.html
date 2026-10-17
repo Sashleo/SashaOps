@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}{{ a.ticker }} - PSX Analyser{% endblock %}
+
+{% block content %}
+{% if not a.found %}
+<div class="page-header"><div class="page-title">{{ a.ticker }}</div></div>
+<div class="card">
+  <p style="color:var(--text-muted)">
+    Not found in psx_companies. <a href="/psx">Back to search</a>.
+  </p>
+</div>
+{% else %}
+
+<div class="page-header">
+  <div>
+    <div class="page-title">
+      {{ a.company_name }}
+      <span style="font-family:var(--font-mono);color:var(--text-muted);font-size:0.75em">{{ a.ticker }}</span>
+    </div>
+    <div style="font-size:0.875rem;color:var(--text-muted)">
+      {{ a.sector or 'Sector not classified' }}
+      {%- if a.sub_sector %} / {{ a.sub_sector }}{% endif %} / PSX Listed
+    </div>
+  </div>
+  <div style="display:flex;gap:var(--s-2);flex-wrap:wrap;align-items:flex-start">
+    <a href="/psx/{{ a.ticker }}/entry" class="btn btn-sm">Enter figures</a>
+    <a href="/psx/{{ a.ticker }}/export?fmt=pdf" class="btn btn-sm">Export PDF</a>
+    <a href="/psx/{{ a.ticker }}?view=share&frame=1" class="btn btn-sm btn-ghost">Share view</a>
+  </div>
+</div>
+
+<!-- KPI strip -->
+<div class="grid--tiles" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr));gap:var(--s-3);margin-bottom:var(--s-5)">
+  <div class="kpi">
+    <div class="kpi-label">Price</div>
+    <div class="kpi-value tabnum">
+      {% if a.current_price is not none %}
+        PKR {{ '{:,.2f}'.format(a.current_price) }}
+        {% if a.price_change_pct is not none %}
+        <span style="font-size:0.75em;color:{% if a.price_change_pct < 0 %}var(--neg){% else %}var(--pos){% endif %}">
+          {{ '{:+.2f}'.format(a.price_change_pct) }}%
+        </span>
+        {% endif %}
+      {% else %}
+        <a href="/psx/{{ a.ticker }}?tab=entry&focus=current_price" class="req-link">Required</a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Market cap</div>
+    <div class="kpi-value tabnum">
+      {% if a.market_cap %}PKR {{ '{:,.0f}'.format(a.market_cap) }}
+      {% else %}<span style="color:var(--text-muted)">--</span>{% endif %}
+    </div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Latest period</div>
+    <div class="kpi-value">
+      {{ a.latest_period or 'No data' }}
+      {%- if a.annual_periods|length > 1 %}
+      <span style="font-size:0.75em;color:var(--text-muted)">({{ a.annual_periods|length }})</span>
+      {%- endif %}
+    </div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Health</div>
+    <div class="kpi-value">
+      {% if a.health_score.score is not none %}
+        {{ a.health_score.score }}/10
+        <span class="badge badge--{% if a.health_score.confidence == 'high' %}pos{% elif a.health_score.confidence == 'moderate' %}warn{% else %}neg{% endif %}" style="font-size:0.625rem;vertical-align:middle">
+          {{ a.health_score.confidence }}
+        </span>
+      {% else %}
+        <span style="color:var(--text-muted)">Not scored</span>
+      {% endif %}
+    </div>
+    {% if a.health_score.note %}
+    <div class="kpi-context">{{ a.health_score.note }}</div>
+    {% endif %}
+  </div>
+</div>
+
+{% include "psx/_staleness.html" %}
+
+<!-- Tab bar -->
+<nav class="tab-bar">
+  {% for t in tabs %}
+  <a href="/psx/{{ a.ticker }}?tab={{ t }}"
+     class="tab-link{% if active_tab == t %} active{% endif %}"
+     {% if active_tab == t %}aria-current="page"{% endif %}
+     hx-get="/psx/{{ a.ticker }}/tab/{{ t }}"
+     hx-target="#panel"
+     hx-push-url="/psx/{{ a.ticker }}?tab={{ t }}"
+     hx-swap="innerHTML">
+    {{ tab_labels[t] }}
+  </a>
+  {% endfor %}
+</nav>
+
+<!-- Active panel -->
+<div id="panel">
+  {% include "psx/tab_" ~ active_tab ~ ".html" %}
+</div>
+
+{% endif %}
+{% endblock %}

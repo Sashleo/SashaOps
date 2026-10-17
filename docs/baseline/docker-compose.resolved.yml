@@ -1,0 +1,56 @@
+name: sashaops_app
+services:
+  sashaops:
+    build:
+      context: C:\Users\Hp\Downloads\SashaOps-main\SashaOps-main\sashaops_app
+      dockerfile: Dockerfile
+    container_name: sashaops
+    environment:
+      APP_NAME: SashaOps
+      APP_SECRET_KEY: a5d311d9c90a150a2b89d5ac109a6ab53d6911ab5c14ae0547e570bc2adf952c
+      APP_VERSION: 1.0.0
+      DATABASE_PATH: /app/data/sashaops.db
+      DB_MASTER_PASSWORD: 09F0557Lfuel@
+      DEBUG: "false"
+      DOCUMENTS_PATH: /app/data/documents
+      LOCKOUT_MINUTES: "15"
+      MAX_LOGIN_ATTEMPTS: "5"
+      SESSION_EXPIRE_HOURS: "2"
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -fk
+        - https://localhost:8000/health
+      timeout: 10s
+      interval: 30s
+      retries: 3
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        target: 8000
+        published: "8000"
+        protocol: tcp
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: C:\Users\Hp\Downloads\SashaOps-main\SashaOps-main\sashaops_app
+        target: /app
+        bind: {}
+      - type: volume
+        source: sashaops_data
+        target: /app/data
+        volume: {}
+      - type: volume
+        source: sashaops_tmp
+        target: /app/.tmp
+        volume: {}
+networks:
+  default:
+    name: sashaops_app_default
+volumes:
+  sashaops_data:
+    name: sashaops_data
+  sashaops_tmp:
+    name: sashaops_tmp

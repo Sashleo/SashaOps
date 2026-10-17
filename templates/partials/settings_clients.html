@@ -1,0 +1,58 @@
+{% if clients %}
+<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--s-3)">
+{% for c in clients %}
+<li style="border:1px solid var(--border);border-radius:var(--radius);padding:var(--s-3) var(--s-4)">
+  <!-- View row -->
+  <div style="display:flex;align-items:center;gap:var(--s-3);flex-wrap:wrap" id="client-view-{{ c.id }}">
+    <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{{ c.accent_color or '#00ff87' }};flex-shrink:0"></span>
+    <span style="font-weight:600;flex:1;min-width:8rem">{{ c.name }}</span>
+    {% if c.industry %}
+    <span style="font-size:0.8rem;color:var(--text-muted)">{{ c.industry }}</span>
+    {% endif %}
+    <span style="font-size:0.75rem;color:var(--text-muted)">Added {{ c.created_at[:10] if c.created_at else '' }}</span>
+    <button class="btn btn-sm btn-ghost"
+            onclick="document.getElementById('client-edit-{{ c.id }}').hidden=false;this.closest('[id^=client-view]').hidden=true"
+            title="Edit">Edit</button>
+    <button class="btn btn-sm btn-ghost" style="color:var(--warn)"
+            hx-post="/settings/clients/{{ c.id }}/delete"
+            hx-target="#settings-clients-panel"
+            hx-swap="innerHTML"
+            hx-confirm="Archive '{{ c.name }}'? Their saved entries stay in the database."
+            title="Archive client">Archive</button>
+    <button class="btn btn-sm btn-ghost" style="color:var(--neg)"
+            hx-post="/settings/clients/{{ c.id }}/purge"
+            hx-target="#settings-clients-panel"
+            hx-swap="innerHTML"
+            hx-confirm="PERMANENTLY delete '{{ c.name }}' and all their saved entries? This cannot be undone."
+            title="Permanently delete">Delete</button>
+  </div>
+  <!-- Edit row (hidden by default) -->
+  <form id="client-edit-{{ c.id }}" hidden
+        hx-post="/settings/clients/{{ c.id }}/update"
+        hx-target="#settings-clients-panel"
+        hx-swap="innerHTML"
+        style="display:flex;flex-wrap:wrap;gap:var(--s-2);align-items:flex-end;margin-top:var(--s-2)">
+    <div class="form-group" style="margin:0;flex:1;min-width:10rem">
+      <label class="form-label">Name</label>
+      <input class="form-input" type="text" name="name" value="{{ c.name }}" required maxlength="120">
+    </div>
+    <div class="form-group" style="margin:0;flex:1;min-width:9rem">
+      <label class="form-label">Industry</label>
+      <input class="form-input" type="text" name="industry" value="{{ c.industry or '' }}" maxlength="80">
+    </div>
+    <div class="form-group" style="margin:0">
+      <label class="form-label">Colour</label>
+      <input class="form-input" type="color" name="accent_color" value="{{ c.accent_color or '#00ff87' }}" style="width:3rem;padding:2px 4px;cursor:pointer">
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">Save</button>
+    <button type="button" class="btn btn-sm"
+            onclick="document.getElementById('client-edit-{{ c.id }}').hidden=true;document.getElementById('client-view-{{ c.id }}').hidden=false">
+      Cancel
+    </button>
+  </form>
+</li>
+{% endfor %}
+</ul>
+{% else %}
+<p style="color:var(--text-muted);font-size:0.88rem;margin:0">No clients yet. Add one below.</p>
+{% endif %}

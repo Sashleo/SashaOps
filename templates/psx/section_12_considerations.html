@@ -1,0 +1,49 @@
+{% import "psx/_macros.html" as m %}
+{{ m.section_head(n, title, note) }}
+
+{% set o = a.observations %}
+
+{% for key, heading, colour in [
+    ('strengths', 'Strengths', 'var(--accent)'),
+    ('weaknesses', 'Weaknesses', 'var(--warn)'),
+    ('risks', 'Risks', 'var(--neg)')] %}
+  {% set items = o.get(key) %}
+  <div style="margin-top:12px">
+    <div style="font-size:0.72em; color:{{ colour }}; text-transform:uppercase;
+                letter-spacing:1.2px; margin-bottom:4px">{{ heading }}</div>
+    {% if items %}
+      {% for it in items %}
+      <div style="font-size:0.84em; color:var(--text-secondary); padding:4px 0;
+                  border-left:3px solid {{ colour }}; padding-left:10px; margin-bottom:3px">
+        {{ it }}
+      </div>
+      {% endfor %}
+    {% else %}
+      <div style="font-size:0.82em; color:var(--text-muted)">
+        No {{ heading|lower }} met the trigger conditions on the data available.
+      </div>
+    {% endif %}
+  </div>
+{% endfor %}
+
+<div style="margin-top:14px">
+  <div style="font-size:0.72em; color:var(--text-dim); text-transform:uppercase;
+              letter-spacing:1.2px; margin-bottom:4px">Data limitations</div>
+  {% if o.get('limitations') %}
+    {% for it in o.get('limitations') %}
+    <div style="font-size:0.82em; color:var(--text-muted); padding:2px 0">{{ it }}</div>
+    {% endfor %}
+  {% else %}
+    <div style="font-size:0.82em; color:var(--text-muted)">
+      No extraction gaps recorded for this company.
+    </div>
+  {% endif %}
+</div>
+
+<div style="margin-top:16px; padding-top:10px; border-top:1px solid var(--bg-2);
+            font-size:0.8em; color:var(--text-muted); line-height:1.55">
+  This analysis is computed from published exchange data and filed financial
+  statements. Figures should be verified against primary filings before use in
+  decisions with material financial consequences. No investment recommendation is
+  expressed or implied.
+</div>

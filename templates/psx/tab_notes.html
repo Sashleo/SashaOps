@@ -1,0 +1,15 @@
+{% set n = 11 %}{% set title = "Considerations" %}{% set note = "Key observations and pending items for this analysis" %}
+<div class="card">
+  {% include "psx/section_12_considerations.html" %}
+</div>
+
+{% if pending_sections is defined and pending_sections %}
+<div class="card" style="margin-top:var(--s-4)">
+  <div class="card-title">Pending Sections</div>
+  <ul style="padding-left:var(--s-4);color:var(--text-muted);font-size:0.875rem;line-height:1.8">
+    {% for ps in pending_sections %}
+    <li>{{ ps }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}

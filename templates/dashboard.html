@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - SashaOps{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div class="page-title">Dashboard</div>
+</div>
+
+<!-- 1. Active client + create new -->
+<div class="card mb-24">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:var(--s-3)">
+    <div class="card-title" style="margin:0">Active Client</div>
+    <button class="btn btn-sm btn-ghost" onclick="document.getElementById('dash-new-client').toggleAttribute('hidden')">
+      + New client
+    </button>
+  </div>
+
+  <div id="dash-new-client" hidden style="margin-top:var(--s-3);padding-top:var(--s-3);border-top:1px solid var(--border)">
+    <form method="post" action="/dashboard/clients" style="display:flex;gap:var(--s-3);flex-wrap:wrap;align-items:flex-end">
+      <div class="form-group" style="margin:0;flex:1;min-width:12rem">
+        <label class="form-label" for="dc-name">Client name</label>
+        <input id="dc-name" class="form-input" type="text" name="name" required placeholder="e.g. Acme Industries">
+      </div>
+      <div class="form-group" style="margin:0;flex:1;min-width:10rem">
+        <label class="form-label" for="dc-industry">Industry (optional)</label>
+        <input id="dc-industry" class="form-input" type="text" name="industry" placeholder="e.g. Textile">
+      </div>
+      <button type="submit" class="btn btn-primary">Create &amp; select</button>
+    </form>
+  </div>
+
+  {% if active_client %}
+  <div style="font-size:1.1em; font-weight:600; margin-top:var(--s-3)">{{ active_client.name }}</div>
+  <div style="font-size:0.85em; color:var(--text-muted); margin-top:2px">
+    {{ active_client.industry or 'Industry not set' }}
+  </div>
+  {% elif clients %}
+  <div style="font-size:0.9em; color:var(--text-muted); margin-top:var(--s-3)">
+    No client selected. Choose one from the Active Client picker in the sidebar.
+  </div>
+  {% else %}
+  <div style="font-size:0.9em; color:var(--text-muted); margin-top:var(--s-3)">
+    No clients yet. Use <strong>+ New client</strong> above to create your first one.
+  </div>
+  {% endif %}
+</div>
+
+<!-- 2. Data health -->
+<div class="card mb-24">
+  {% include "partials/data_health.html" %}
+</div>
+
+<!-- 3. Quick actions -->
+<div class="card">
+  <div class="card-title">Quick Actions</div>
+  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px">
+    <a href="/psx" class="btn btn-primary">PSX Analyser</a>
+    <a href="/private" class="btn">Private Analyser</a>
+    <a href="/newsfeed" class="btn">Newsfeed</a>
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}Settings - SashaOps{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <div class="page-title">Settings</div>
+    <div class="page-subtitle">System configuration and security status</div>
+  </div>
+</div>
+
+<!-- Security status -->
+<div class="card mb-24">
+  <div class="card-title">Security Status</div>
+  <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:12px; margin-top:8px">
+    <div>
+      <div style="font-size:0.78em; color:var(--text-muted)">Database Encryption</div>
+      <div style="font-size:0.9em; color:{% if db_encrypted %}var(--accent){% else %}var(--neg){% endif %}; margin-top:3px">
+        {% if db_encrypted %}SQLCipher AES-256{% else %}Unencrypted (development mode){% endif %}
+      </div>
+    </div>
+    <div>
+      <div style="font-size:0.78em; color:var(--text-muted)">Post-Quantum KEM</div>
+      <div style="font-size:0.9em; color:{% if pqc_available %}var(--accent){% else %}var(--warn){% endif %}; margin-top:3px">
+        {% if pqc_available %}ML-KEM-768 + X25519 Hybrid{% else %}liboqs not available{% endif %}
+      </div>
+    </div>
+    <div>
+      <div style="font-size:0.78em; color:var(--text-muted)">Report Signing</div>
+      <div style="font-size:0.9em; color:{% if signing_key_exists %}var(--accent){% else %}var(--warn){% endif %}; margin-top:3px">
+        {% if signing_key_exists %}ML-DSA (Dilithium) key present{% else %}Signing key not generated{% endif %}
+      </div>
+    </div>
+    <div>
+      <div style="font-size:0.78em; color:var(--text-muted)">NIST Compliance</div>
+      <div style="font-size:0.9em; color:{% if nist_compliant %}var(--accent){% else %}var(--warn){% endif %}; margin-top:3px">
+        {% if nist_compliant %}FIPS-203 / FIPS-204 Active{% else %}Partial - check PQC above{% endif %}
+      </div>
+    </div>
+    {% if fingerprint and fingerprint != 'not set' %}
+    <div>
+      <div style="font-size:0.78em; color:var(--text-muted)">App Fingerprint</div>
+      <div style="font-size:0.82em; font-family:var(--font-mono); color:var(--info); margin-top:3px">{{ fingerprint[:32] }}…</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Client management -->
+<div class="card mb-24">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:var(--s-2);margin-bottom:var(--s-4)">
+    <div class="card-title" style="margin:0">Clients</div>
+    <button class="btn btn-sm btn-ghost"
+            onclick="document.getElementById('new-client-panel').hidden=!document.getElementById('new-client-panel').hidden">
+      + Add client
+    </button>
+  </div>
+
+  <!-- Existing clients list -->
+  <div id="settings-clients-panel">
+    {% include "partials/settings_clients.html" %}
+  </div>
+
+  <!-- Add client form -->
+  <div id="new-client-panel" hidden style="margin-top:var(--s-4);border-top:1px solid var(--border);padding-top:var(--s-4)">
+    <div style="font-size:0.85rem;font-weight:600;margin-bottom:var(--s-3)">New client</div>
+    <form hx-post="/settings/clients"
+          hx-target="#settings-clients-panel"
+          hx-swap="innerHTML"
+          hx-on::after-request="document.getElementById('new-client-panel').hidden=true;this.reset()"
+          style="display:flex;flex-wrap:wrap;gap:var(--s-2);align-items:flex-end">
+      <div class="form-group" style="margin:0;flex:1;min-width:12rem">
+        <label class="form-label" for="new-client-name">Name *</label>
+        <input id="new-client-name" class="form-input" type="text" name="name" required maxlength="120" placeholder="e.g. Acme Textiles">
+      </div>
+      <div class="form-group" style="margin:0;flex:1;min-width:9rem">
+        <label class="form-label" for="new-client-industry">Industry</label>
+        <input id="new-client-industry" class="form-input" type="text" name="industry" maxlength="80" placeholder="e.g. Textile">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label" for="new-client-color">Colour</label>
+        <input id="new-client-color" class="form-input" type="color" name="accent_color" value="#00ff87" style="width:3rem;padding:2px 4px;cursor:pointer">
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">Create</button>
+      <button type="button" class="btn btn-sm"
+              onclick="document.getElementById('new-client-panel').hidden=true">Cancel</button>
+    </form>
+  </div>
+</div>
+
+<!-- DCF valuation assumptions -->
+<div class="card mb-24">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:var(--s-2);margin-bottom:var(--s-4)">
+    <div>
+      <div class="card-title" style="margin:0">DCF Valuation Assumptions</div>
+      <div style="font-size:0.8rem;color:var(--text-muted);margin-top:3px">
+        Pakistan-calibrated rates for WACC and DCF models. Live rates update automatically; manual overrides take precedence.
+      </div>
+    </div>
+    <button class="btn btn-sm btn-ghost"
+            hx-get="/settings/dcf-rates"
+            hx-target="#dcf-rates-panel"
+            hx-swap="outerHTML"
+            style="font-size:0.78rem">
+      Refresh
+    </button>
+  </div>
+
+  <div id="dcf-rates-panel"
+       hx-get="/settings/dcf-rates"
+       hx-trigger="load"
+       hx-swap="outerHTML">
+    <div style="color:var(--text-muted);font-size:0.85rem">Loading rates…</div>
+  </div>
+</div>
+
+<!-- Audit log chain verification -->
+<div class="card mb-24">
+  <div class="card-title">Audit Log Integrity</div>
+  <div style="font-size:0.85em; color:var(--text-muted); margin-bottom:12px">
+    The audit log is hash-chained. Verify that no entries have been tampered with or deleted.
+  </div>
+  <button class="btn"
+          hx-post="/settings/verify-audit"
+          hx-target="#audit-result"
+          hx-swap="innerHTML">
+    Verify Audit Chain
+  </button>
+  <div id="audit-result" style="margin-top:12px"></div>
+</div>
+
+<!-- Change password -->
+<div class="card mb-24">
+  <div class="card-title">Change Password</div>
+  <form hx-post="/settings/change-password"
+        hx-target="#change-password-result"
+        hx-swap="innerHTML"
+        hx-on::after-request="if(event.detail.successful && event.detail.xhr.status===200 && event.detail.xhr.responseText.includes('success')){this.reset()}"
+        style="max-width:360px">
+    <div class="form-group">
+      <label class="form-label" for="cp-current">Current Password</label>
+      <input id="cp-current" type="password" name="current_password" class="form-input" required>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="cp-new">New Password</label>
+      <input id="cp-new" type="password" name="new_password" class="form-input" required minlength="12">
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="cp-confirm">Confirm New Password</label>
+      <input id="cp-confirm" type="password" name="confirm_password" class="form-input" required>
+    </div>
+    <button type="submit" class="btn btn-primary">Update Password</button>
+  </form>
+  <div id="change-password-result" style="margin-top:var(--s-3);max-width:360px"></div>
+</div>
+
+<!-- 2FA setup -->
+<div class="card mb-24">
+  <div class="card-title">Two-Factor Authentication</div>
+  <div style="font-size:0.85em; color:var(--text-muted); margin-bottom:12px">
+    Status: {% if totp_enabled %}<span class="badge badge--pos">Enabled</span>{% else %}<span class="badge badge--warn">Disabled</span>{% endif %}
+  </div>
+  {% if not totp_enabled %}
+  <button class="btn"
+          hx-post="/settings/setup-totp"
+          hx-target="#totp-setup"
+          hx-swap="innerHTML">
+    Enable 2FA
+  </button>
+  <div id="totp-setup" style="margin-top:16px"></div>
+  {% else %}
+  <button class="btn btn-danger"
+          hx-post="/settings/disable-totp"
+          hx-confirm="Disable two-factor authentication?"
+          hx-target="#totp-status"
+          hx-swap="outerHTML">
+    Disable 2FA
+  </button>
+  {% endif %}
+</div>
+
+<!-- App info -->
+<div class="card">
+  <div class="card-title">System Info</div>
+  <div style="font-size:0.85em; display:grid; gap:8px; color:var(--text-muted)">
+    <div>SashaOps Version: <span style="color:var(--text)">{{ version or '1.0.0' }}</span></div>
+    <div>Database Path: <span style="color:var(--text); font-family:var(--font-mono)">{{ db_path or '/app/data/sashaops.db' }}</span></div>
+  </div>
+</div>
+
+{% endblock %}

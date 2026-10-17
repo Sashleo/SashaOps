@@ -1,0 +1,30 @@
+{% import "psx/_macros.html" as m %}
+{{ m.section_head(n, title, note) }}
+
+<div style="font-size:0.82em; color:var(--text-muted); margin-bottom:14px">
+  Scanner data pre-filled from {{ a.latest_period or "N/A" }}.
+  Empty fields accept manual input — fill them to unlock additional ratios,
+  distress prediction and DCF valuation. The DCF result appears below the form.
+</div>
+
+{% include "components/entry_form.html" %}
+
+<div id="dcf-result"></div>
+
+<script>
+(function(){
+  const form = document.querySelector('#psx-section-{{ n }} form');
+  if (!form) return;
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    const fd = new FormData(form);
+    fetch(form.action, {method:'POST', body: fd, credentials:'same-origin'})
+      .then(r => r.text())
+      .then(html => { document.getElementById('dcf-result').innerHTML = html; })
+      .catch(() => {
+        document.getElementById('dcf-result').innerHTML =
+          '<div style="color:var(--neg); font-size:0.85em; margin-top:12px">Request failed.</div>';
+      });
+  });
+})();
+</script>

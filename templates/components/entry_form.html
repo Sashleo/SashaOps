@@ -1,0 +1,187 @@
+{#
+  Shared financial entry form — used by both PSX Analyser (pre-filled) and
+  Private Analyser (blank). Expects:
+    mode:       "psx" | "private"
+    prefill:    dict of field -> value (empty dict for private)
+    sectors:    list of sector names
+    ticker:     string (PSX ticker or empty)
+#}
+
+{% macro field(name, label, value, unit="PKR '000", group="") %}
+<div class="entry-field" data-group="{{ group }}">
+  <label for="f_{{ name }}">{{ label }}<span class="entry-edited" hidden aria-label="edited"> ·&nbsp;edited</span></label>
+  <div class="entry-input-wrap">
+    <input type="number" step="any" id="f_{{ name }}" name="{{ name }}"
+           value="{{ value if value is not none else '' }}"
+           data-original="{{ value if value is not none else '' }}"
+           class="entry-input{% if value is not none %} prefilled{% endif %}"
+           placeholder="—"
+           autocomplete="off">
+    <span class="entry-unit">{{ unit }}</span>
+  </div>
+</div>
+{% endmacro %}
+
+<form method="post"
+      action="{% if mode == 'psx' %}/psx/{{ ticker }}/analyse-entry{% else %}/private/analyse{% endif %}"
+      class="entry-form">
+
+  {% if mode == "private" %}
+  <div class="entry-section">
+    <div class="entry-section-title">Identity</div>
+    <div class="entry-grid">
+      <div class="entry-field">
+        <label for="f_company_name">Company name</label>
+        <input type="text" id="f_company_name" name="company_name"
+               value="{{ prefill.get('company_name', '') }}"
+               class="entry-input" required placeholder="e.g. Acme Textiles">
+      </div>
+      <div class="entry-field">
+        <label for="f_sector">Sector</label>
+        <select id="f_sector" name="sector" class="entry-input">
+          <option value="">Select sector</option>
+          {% for s in sectors %}
+          <option value="{{ s }}" {% if prefill.get('sector') == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="entry-field">
+        <label for="f_currency">Reporting unit</label>
+        <select id="f_currency" name="unit" class="entry-input" onchange="updateUnits(this.value)">
+          <option value="thousands" {% if prefill.get('unit','thousands') == 'thousands' %}selected{% endif %}>PKR '000</option>
+          <option value="millions" {% if prefill.get('unit') == 'millions' %}selected{% endif %}>PKR millions</option>
+          <option value="absolute" {% if prefill.get('unit') == 'absolute' %}selected{% endif %}>PKR (absolute)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="entry-section">
+    <div class="entry-section-title">Income statement</div>
+    <div class="entry-grid">
+      {{ field("revenue", "Revenue", prefill.get("revenue"), group="income") }}
+      {{ field("gross_profit", "Gross profit", prefill.get("gross_profit"), group="income") }}
+      {{ field("ebitda", "EBITDA", prefill.get("ebitda"), group="income") }}
+      {{ field("ebit", "EBIT", prefill.get("ebit"), group="income") }}
+      {{ field("net_income", "Net income", prefill.get("net_income"), group="income") }}
+      {{ field("interest_expense", "Interest expense", prefill.get("interest_expense"), group="income") }}
+      {{ field("depreciation", "Depreciation", prefill.get("depreciation"), group="income") }}
+      {{ field("eps", "EPS", prefill.get("eps"), unit="PKR", group="income") }}
+    </div>
+  </div>
+
+  <div class="entry-section">
+    <div class="entry-section-title">Balance sheet</div>
+    <div class="entry-grid">
+      {{ field("total_assets", "Total assets", prefill.get("total_assets"), group="balance") }}
+      {{ field("total_equity", "Total equity", prefill.get("total_equity"), group="balance") }}
+      {{ field("total_debt", "Total debt", prefill.get("total_debt"), group="balance") }}
+      {{ field("cash", "Cash", prefill.get("cash"), group="balance") }}
+      {{ field("current_assets", "Current assets", prefill.get("current_assets"), group="balance") }}
+      {{ field("current_liabilities", "Current liabilities", prefill.get("current_liabilities"), group="balance") }}
+      {{ field("retained_earnings", "Retained earnings", prefill.get("retained_earnings"), group="balance") }}
+      {{ field("inventory", "Inventory", prefill.get("inventory"), group="balance") }}
+      {{ field("receivables", "Receivables", prefill.get("receivables"), group="balance") }}
+      {{ field("payables", "Payables", prefill.get("payables"), group="balance") }}
+    </div>
+  </div>
+
+  <div class="entry-section">
+    <div class="entry-section-title">Cash flow</div>
+    <div class="entry-grid">
+      {{ field("ocf", "Operating cash flow", prefill.get("ocf"), group="cashflow") }}
+      {{ field("capex", "Capital expenditure", prefill.get("capex"), group="cashflow") }}
+    </div>
+  </div>
+
+  <div class="entry-section">
+    <div class="entry-section-title">Valuation assumptions</div>
+    <div class="entry-grid">
+      {{ field("risk_free_rate", "Risk-free rate", prefill.get("risk_free_rate", ""), unit="%", group="dcf") }}
+      {{ field("equity_risk_premium", "Equity risk premium", prefill.get("equity_risk_premium", ""), unit="%", group="dcf") }}
+      {{ field("beta", "Beta", prefill.get("beta", ""), unit="x", group="dcf") }}
+      {{ field("tax_rate", "Effective tax rate", prefill.get("tax_rate", ""), unit="%", group="dcf") }}
+      {{ field("terminal_growth", "Terminal growth rate", prefill.get("terminal_growth", ""), unit="%", group="dcf") }}
+      {{ field("shares_outstanding", "Shares outstanding", prefill.get("shares_outstanding", ""), unit="mn", group="dcf") }}
+      {{ field("current_price", "Current market price", prefill.get("current_price", ""), unit="PKR", group="dcf") }}
+    </div>
+  </div>
+
+  {% if mode == "private" %}
+  <div class="entry-section">
+    <div class="entry-section-title">Prior year (for growth metrics)</div>
+    <div class="entry-grid">
+      {{ field("prev_revenue", "Revenue (prior)", prefill.get("prev_revenue"), group="prior") }}
+      {{ field("prev_net_income", "Net income (prior)", prefill.get("prev_net_income"), group="prior") }}
+      {{ field("prev_gross_profit", "Gross profit (prior)", prefill.get("prev_gross_profit"), group="prior") }}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="entry-actions">
+    <button type="submit" class="btn btn-primary">
+      {% if mode == "psx" %}Run DCF{% else %}Analyse{% endif %}
+    </button>
+    {% if mode == "private" %}
+      {% if active_client %}
+      <div style="display:flex;gap:var(--s-2);align-items:center;flex-wrap:wrap">
+        <input type="text" name="_entry_name" id="entry-name-input"
+               value="{{ loaded_entry_id and prefill.get('company_name','') or '' }}"
+               placeholder="Entry name (optional)"
+               maxlength="80"
+               style="font-size:0.85rem;padding:4px 8px;border:1px solid var(--border);
+                      border-radius:4px;background:var(--bg-input);min-width:12rem">
+        <button type="submit" formaction="/private/save" class="btn" id="entry-save-btn">Save entry</button>
+      </div>
+      {% else %}
+      <span style="font-size:0.82em;color:var(--text-muted)">Select a client to save</span>
+      {% endif %}
+    {% endif %}
+    <button type="reset" class="btn">Clear</button>
+  </div>
+</form>
+
+<script>
+function updateUnits(unit) {
+  const labels = {thousands: "PKR '000", millions: "PKR mn", absolute: "PKR"};
+  document.querySelectorAll('.entry-unit').forEach(el => {
+    const field = el.closest('.entry-field');
+    const group = field?.dataset.group;
+    if (group && group !== 'dcf') {
+      const input = field.querySelector('input');
+      if (input && input.name !== 'eps') el.textContent = labels[unit] || "PKR '000";
+    }
+  });
+}
+
+(function () {
+  var form = document.querySelector('.entry-form');
+  if (!form) return;
+  var _submitted = false;
+
+  function anyDirty() {
+    return Array.from(form.querySelectorAll('.entry-input[data-original]')).some(function (inp) {
+      return (inp.value || '') !== (inp.getAttribute('data-original') || '');
+    });
+  }
+
+  form.addEventListener('input', function (e) {
+    var inp = e.target;
+    if (!inp.classList.contains('entry-input')) return;
+    var orig = inp.getAttribute('data-original') || '';
+    var cur = inp.value || '';
+    // show "edited" badge next to the label whenever a pre-filled value was changed
+    if (inp.classList.contains('prefilled')) {
+      var badge = inp.closest('.entry-field') && inp.closest('.entry-field').querySelector('.entry-edited');
+      if (badge) badge.hidden = (cur === orig);
+    }
+  });
+
+  form.addEventListener('submit', function () { _submitted = true; });
+
+  window.addEventListener('beforeunload', function (e) {
+    if (!_submitted && anyDirty()) { e.preventDefault(); e.returnValue = ''; }
+  });
+})();
+</script>

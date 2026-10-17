@@ -1,0 +1,18 @@
+<!-- psx/_search_results.html - typeahead results for the ticker search. -->
+{% if q and not results %}
+<div style="font-size:0.85em; color:var(--text-muted); padding:8px 2px">
+  No listed company matches "{{ q }}".
+</div>
+{% elif results %}
+<div style="margin-top:8px; border:1px solid var(--bg-2); border-radius:var(--radius); overflow:hidden">
+  {% for r in results %}
+  <a href="/psx/{{ r.symbol }}"
+     style="display:flex; gap:10px; align-items:baseline; padding:7px 10px;
+            border-bottom:1px solid var(--bg-2); text-decoration:none">
+    <span style="font-family:var(--font-mono); color:var(--accent); min-width:72px">{{ r.symbol }}</span>
+    <span style="color:var(--text-secondary); flex:1">{{ r.company_name }}</span>
+    <span style="color:var(--text-dim); font-size:0.8em">{{ r.sector_name or '' }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}

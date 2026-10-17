@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}SashaOps{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/layout.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <script src="/static/js/htmx.min.js" defer></script>
+  <script src="/static/js/chart.umd.min.js" defer></script>
+  <script src="/static/js/charts.js" defer></script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<a href="#main" class="skip-link">Skip to content</a>
+
+<!-- Mobile top bar (below 900px) -->
+<header class="top-bar">
+  <span class="top-bar-logo">SashaOps</span>
+  <div style="display:flex;gap:var(--s-2);align-items:center">
+    <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+      <span id="theme-icon-m">&#9789;</span>
+    </button>
+    <button class="menu-btn" onclick="document.getElementById('mobile-nav').classList.add('open')" aria-label="Open menu">
+      &#9776;
+    </button>
+  </div>
+</header>
+
+<!-- Mobile nav overlay -->
+<div id="mobile-nav" class="mobile-nav" onclick="if(event.target===this)this.classList.remove('open')">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="sidebar-logo">SashaOps</div>
+      <div class="sidebar-tagline">Financial Analyst Workbook</div>
+    </div>
+    <div class="client-selector">
+      <label>Active Client</label>
+      <select class="client-select"
+              hx-post="/dashboard/set-client"
+              hx-trigger="change"
+              hx-target="#client-indicator"
+              hx-swap="outerHTML"
+              name="client_id"
+              onchange="document.getElementById('mobile-nav').classList.remove('open')">
+        <option value="">- Select client -</option>
+        {% for client in clients %}
+        <option value="{{ client.id }}"
+          {% if active_client and active_client.id == client.id %}selected{% endif %}>
+          {{ client.name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <nav class="sidebar-nav">
+      {% set nav_items = [
+        ('/dashboard', 'dashboard', 'Dashboard'),
+        ('/psx', 'psx', 'PSX Analyser'),
+        ('/private', 'private', 'Private Analyser'),
+        ('/newsfeed', 'newsfeed', 'Newsfeed'),
+        ('/reports', 'reports', 'Reports'),
+        ('/settings', 'settings', 'Settings'),
+      ] %}
+      {% for href, key, label in nav_items %}
+      <a href="{{ href }}" class="nav-item" {% if active_page == key %}aria-current="page"{% endif %}
+         onclick="document.getElementById('mobile-nav').classList.remove('open')">
+        {{ label }}
+      </a>
+      {% endfor %}
+    </nav>
+    <div class="sidebar-footer">
+      <a href="/logout" style="color:var(--text-muted)">Logout</a>
+    </div>
+  </aside>
+</div>
+
+<div class="app-shell">
+
+  <!-- Desktop sidebar (900px+) -->
+  <aside class="sidebar">
+
+    <div class="sidebar-brand" style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div class="sidebar-logo">SashaOps</div>
+        <div class="sidebar-tagline">Financial Analyst Workbook</div>
+      </div>
+      <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+        <span id="theme-icon">&#9789;</span>
+      </button>
+    </div>
+
+    <div class="client-selector">
+      <label>Active Client</label>
+      <select class="client-select"
+              hx-post="/dashboard/set-client"
+              hx-trigger="change"
+              hx-target="#client-indicator"
+              hx-swap="outerHTML"
+              name="client_id">
+        <option value="">- Select client -</option>
+        {% for client in clients %}
+        <option value="{{ client.id }}"
+          {% if active_client and active_client.id == client.id %}selected{% endif %}>
+          {{ client.name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <nav class="sidebar-nav">
+      {% for href, key, label in nav_items %}
+      <a href="{{ href }}" class="nav-item" {% if active_page == key %}aria-current="page"{% endif %}>
+        {{ label }}
+      </a>
+      {% endfor %}
+    </nav>
+
+    <div class="sidebar-footer">
+      <div id="client-indicator" style="margin-bottom:0.375rem">
+        {% if active_client %}
+        <span style="color:var(--accent)">&#9679;</span> {{ active_client.name }}
+        {% else %}
+        <span style="color:var(--text-muted)">&#9679;</span> No client selected
+        {% endif %}
+      </div>
+      <a href="/logout" style="color:var(--text-muted)">Logout</a>
+    </div>
+
+  </aside>
+
+  <main class="main-content" id="main">
+    <div class="page">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+</div>
+
+<div id="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<!-- Chart expand dialog (shared, one per page) -->
+<dialog id="chart-dialog" class="chart-dialog">
+  <div class="chart-dialog-header">
+    <span id="chart-dialog-title" style="font-weight:500"></span>
+    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('chart-dialog').close()">Close</button>
+  </div>
+  <div class="chart-frame" id="chart-dialog-frame">
+    <canvas id="chart-dialog-canvas"></canvas>
+  </div>
+  <div class="chart-dialog-actions">
+    <button class="btn btn-sm" id="chart-dialog-data-btn" onclick="toggleChartData()">Show data</button>
+    <button class="btn btn-sm" onclick="downloadChartPng()">Download PNG</button>
+  </div>
+  <div id="chart-dialog-table" style="display:none;margin-top:var(--s-4);overflow-x:auto"></div>
+</dialog>
+
+<script>
+// Theme toggle
+function toggleTheme() {
+  const html = document.documentElement;
+  const current = html.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  updateThemeIcons(next);
+  try { localStorage.setItem('sashaops-theme', next); } catch(e) {}
+}
+
+function updateThemeIcons(theme) {
+  const icon = theme === 'dark' ? '☀' : '☽';
+  const el = document.getElementById('theme-icon');
+  const el2 = document.getElementById('theme-icon-m');
+  if (el) el.textContent = icon;
+  if (el2) el2.textContent = icon;
+}
+
+(function() {
+  try {
+    const saved = localStorage.getItem('sashaops-theme');
+    if (saved) {
+      document.documentElement.setAttribute('data-theme', saved);
+      updateThemeIcons(saved);
+    }
+  } catch(e) {}
+})();
+
+// Toast
+function showToast(msg, type = 'info', duration = 4000) {
+  const el = document.createElement('div');
+  el.className = 'toast toast--' + type;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), duration);
+}
+
+// HTMX error handler — catches both 4xx and 5xx
+document.addEventListener('htmx:responseError', (e) => {
+  const status = e.detail && e.detail.xhr ? e.detail.xhr.status : 0;
+  if (status >= 500) showToast('Something went wrong on the server.', 'neg');
+  else if (status === 401 || status === 403) showToast('Session expired — please log in again.', 'warn');
+  else if (status >= 400) showToast('Request could not be completed.', 'warn');
+});
+
+// Tab bar active state — update immediately on click so the underline tracks the user
+document.addEventListener('htmx:beforeRequest', (e) => {
+  const el = e.detail && e.detail.elt;
+  if (el && el.classList && el.classList.contains('tab-link')) {
+    const bar = el.closest('.tab-bar');
+    if (bar) {
+      bar.querySelectorAll('.tab-link').forEach(t => {
+        t.classList.remove('active');
+        t.removeAttribute('aria-current');
+      });
+      el.classList.add('active');
+      el.setAttribute('aria-current', 'page');
+    }
+  }
+});
+
+// Button loading state
+document.addEventListener('htmx:beforeRequest', (e) => {
+  const el = e.detail.elt;
+  if (el.tagName === 'BUTTON') {
+    el.classList.add('btn-loading');
+    el._originalText = el.innerHTML;
+    el.innerHTML = '<span class="spinner"></span> ' + el.innerHTML;
+  }
+});
+document.addEventListener('htmx:afterRequest', (e) => {
+  const el = e.detail.elt;
+  if (el.tagName === 'BUTTON' && el._originalText) {
+    el.classList.remove('btn-loading');
+    el.innerHTML = el._originalText;
+  }
+});
+
+// Chart dialog helpers
+var _dialogSpec = null;
+
+function openChartDialog(title, specJson) {
+  const dlg = document.getElementById('chart-dialog');
+  document.getElementById('chart-dialog-title').textContent = title;
+  document.getElementById('chart-dialog-table').style.display = 'none';
+  document.getElementById('chart-dialog-data-btn').textContent = 'Show data';
+  _dialogSpec = typeof specJson === 'string' ? JSON.parse(specJson) : specJson;
+
+  const frame = document.getElementById('chart-dialog-frame');
+  const canvas = document.getElementById('chart-dialog-canvas');
+
+  // Destroy any existing Chart.js instance
+  const existing = Chart.getChart(canvas);
+  if (existing) existing.destroy();
+
+  // Remove any dynamically inserted nodes (e.g. small_multiples grid) left over
+  // from a previous open — they are never part of the static dialog HTML.
+  Array.from(frame.children).forEach(child => {
+    if (child !== canvas) child.remove();
+  });
+  canvas.style.display = '';  // restore if smallMultiples hid it
+
+  if (window._drawChartSpec) window._drawChartSpec(canvas, _dialogSpec);
+  dlg.showModal();
+}
+
+function toggleChartData() {
+  const tbl = document.getElementById('chart-dialog-table');
+  const btn = document.getElementById('chart-dialog-data-btn');
+  if (tbl.style.display === 'none') {
+    let html = '';
+    const s = _dialogSpec;
+    if (s) {
+      const kind = s.kind;
+      if ((kind === 'grouped_bar' || kind === 'line' || kind === 'stacked_bar' || kind === 'heatmap') && s.labels && s.series) {
+        html = '<table class="data-table"><thead><tr><th></th>';
+        s.series.forEach(sr => { html += '<th>' + (sr.name || '') + '</th>'; });
+        html += '</tr></thead><tbody>';
+        s.labels.forEach((l, i) => {
+          html += '<tr><td>' + l + '</td>';
+          s.series.forEach(sr => { html += '<td>' + (sr.data && sr.data[i] != null ? sr.data[i] : '') + '</td>'; });
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+      } else if (kind === 'dot_plot' && s.series) {
+        html = '<table class="data-table"><thead><tr><th>Metric</th><th>Percentile</th></tr></thead><tbody>';
+        s.series.forEach(r => { html += '<tr><td>' + (r.name || '') + '</td><td>' + (r.percentile != null ? r.percentile : '') + '</td></tr>'; });
+        html += '</tbody></table>';
+      } else if (kind === 'scatter' && s.series) {
+        const xl = s.x_label || 'X', yl = s.y_label || 'Y';
+        html = '<table class="data-table"><thead><tr><th>Name</th><th>' + xl + '</th><th>' + yl + '</th></tr></thead><tbody>';
+        s.series.forEach(pt => { html += '<tr><td>' + (pt.label || '') + '</td><td>' + (pt.x != null ? pt.x : '') + '</td><td>' + (pt.y != null ? pt.y : '') + '</td></tr>'; });
+        html += '</tbody></table>';
+      } else if (kind === 'small_multiples' && s.series) {
+        s.series.forEach(panel => {
+          html += '<p style="font-weight:500;margin:0.75rem 0 0.25rem">' + (panel.name || '') + '</p>';
+          html += '<table class="data-table"><thead><tr><th>Period</th><th>Value</th></tr></thead><tbody>';
+          (panel.labels || []).forEach((l, i) => { html += '<tr><td>' + l + '</td><td>' + (panel.data && panel.data[i] != null ? panel.data[i] : '') + '</td></tr>'; });
+          html += '</tbody></table>';
+        });
+      }
+    }
+    if (!html) html = '<p style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem 0">No tabular data available for this chart type.</p>';
+    tbl.innerHTML = html;
+    tbl.style.display = 'block';
+    btn.textContent = 'Hide data';
+  } else {
+    tbl.style.display = 'none';
+    btn.textContent = 'Show data';
+  }
+}
+
+function downloadChartPng() {
+  const canvas = document.getElementById('chart-dialog-canvas');
+  canvas.toBlob(blob => {
+    if (!blob) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (document.getElementById('chart-dialog-title').textContent || 'chart') + '.png';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+}
+
+// Close dialog on backdrop click
+document.getElementById('chart-dialog').addEventListener('click', function(e) {
+  if (e.target === this) this.close();
+});
+
+// Destroy dialog chart and clean up injected nodes on close
+document.getElementById('chart-dialog').addEventListener('close', function() {
+  const frame = document.getElementById('chart-dialog-frame');
+  const canvas = document.getElementById('chart-dialog-canvas');
+  const existing = Chart.getChart(canvas);
+  if (existing) existing.destroy();
+  Array.from(frame.children).forEach(child => {
+    if (child !== canvas) child.remove();
+  });
+  canvas.style.display = '';
+});
+</script>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

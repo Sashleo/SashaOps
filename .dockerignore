@@ -1,0 +1,16 @@
+.env
+*.db
+*.db-wal
+*.db-shm
+data/
+.tmp/
+.cache/
+__pycache__/
+*.pyc
+.pytest_cache/
+.git/
+.claude/
+CLAUDE.md
+*.pem
+*.key
+*.crt

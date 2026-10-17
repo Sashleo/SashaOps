@@ -1,0 +1,78 @@
+<!-- partials/data_health.html — Data Health card (Phase 2 Task 2.6).
+     Real per-job status read from scrape_log via core/data_health.py.
+     While any job is running, polls itself every 3s so rows update live. -->
+<div id="data-health-card"
+  {% if any_running %}
+  hx-get="/dashboard/data-health"
+  hx-trigger="every 3s"
+  hx-target="#data-health-card"
+  hx-swap="outerHTML"
+  {% endif %}
+>
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px">
+    <div class="card-title" style="margin:0">Data Health</div>
+    <button class="btn btn-sm"
+            hx-post="/dashboard/data-health/refresh"
+            hx-target="#data-health-card"
+            hx-swap="outerHTML"
+            style="font-size:0.78em; padding:4px 10px">
+      Refresh all
+    </button>
+  </div>
+
+  <table style="width:100%; font-size:0.85em; border-collapse:collapse">
+    {% for row in data_health %}
+    <tr style="border-left:3px solid
+               {% if row.status == 'green' %}var(--accent)
+               {% elif row.status == 'amber' %}var(--warn)
+               {% elif row.status == 'running' %}#6b7280
+               {% else %}var(--neg){% endif %}">
+      <td style="padding:6px 8px">
+        <span title="{{ row.cadence }}" style="color:var(--text-secondary)">{{ row.label }}</span>
+        {% if row.error %}
+        <div style="font-size:0.8em; color:var(--neg); margin-top:2px">{{ row.error[:100] }}</div>
+        {% endif %}
+      </td>
+      <td style="padding:6px 8px; color:var(--text-dim); white-space:nowrap">
+        {% if row.status == 'running' %}
+          refreshing&hellip;
+        {% else %}
+          {{ row.last_run }}
+        {% endif %}
+      </td>
+      <td style="padding:6px 8px; text-align:right; font-family:var(--font-mono); color:var(--text-muted); white-space:nowrap">
+        {{ row.value }}
+      </td>
+      <td style="padding:6px 4px; text-align:right; width:1%">
+        <button class="btn btn-sm"
+                hx-post="/dashboard/data-health/refresh"
+                hx-vals='{"job_id": "{{ row.id }}"}'
+                hx-target="#data-health-card"
+                hx-swap="outerHTML"
+                {% if row.status == 'running' %}disabled{% endif %}
+                style="font-size:0.75em; padding:2px 7px; opacity:0.7">
+          &#8635;
+        </button>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div style="font-size:0.75em; color:var(--text-dim); margin-top:8px">
+    Green: fresh. Amber: partial or stale (1-3x expected). Red: unreachable, failed, or never run.
+  </div>
+
+  {% if violations %}
+  <div style="margin-top:14px; padding-top:10px; border-top:1px solid var(--bg-2)">
+    <div style="font-size:0.7em; color:var(--warn); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:6px">
+      Flagged values ({{ violations|length }})
+    </div>
+    {% for v in violations %}
+    <div style="border-left:3px solid var(--warn); padding:6px 8px; margin-bottom:4px; font-size:0.82em">
+      <div style="color:var(--text-secondary)">{{ v.label }}</div>
+      <div style="color:var(--text-dim); font-size:0.9em">{{ v.message }}</div>
+      <div style="color:var(--warn); font-size:0.9em; margin-top:2px">{{ v.prompt }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
