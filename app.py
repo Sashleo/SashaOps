@@ -30,6 +30,7 @@ from database.schema import run_migrations
 from security.auth import SessionMiddleware
 from core.feed_cache import run_feed_scheduler
 from core.scheduler import run_scheduler
+from core.logging import configure_logging, RequestIdMiddleware
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 from routers import (
@@ -42,9 +43,15 @@ from routers import (
     reports,
     settings as settings_router,
     debug as debug_router,
+    health as health_router,
 )
 
 log = structlog.get_logger()
+
+configure_logging(
+    level="DEBUG" if settings.DEBUG else "INFO",
+    json_output=not settings.DEBUG,
+)
 
 # ── App factory ───────────────────────────────────────────────────────────────
 def create_app() -> FastAPI:
@@ -60,6 +67,7 @@ def create_app() -> FastAPI:
     # HTTPS redirect — any plain-HTTP request is redirected to HTTPS.
     # Uvicorn is started with SSL, so in normal operation all traffic is already
     # HTTPS. This middleware handles any edge case where HTTP slips through.
+    app.add_middleware(RequestIdMiddleware)
     app.add_middleware(HTTPSRedirectMiddleware)
     app.add_middleware(SessionMiddleware, secret_key=settings.APP_SECRET_KEY)
     app.add_middleware(
@@ -83,11 +91,11 @@ def create_app() -> FastAPI:
     app.include_router(reports.router,          prefix="/reports",    tags=["reports"])
     app.include_router(settings_router.router,  prefix="/settings",   tags=["settings"])
     app.include_router(debug_router.router,     prefix="/debug",      tags=["debug"])
+    app.include_router(health_router.router,    prefix="/health",     tags=["health"])
 
-    # ── Health & readiness ──────────────────────────────────────────────────────
-    @app.get("/health")
-    async def health():
-        # Liveness — process is up.
+    # ── Liveness & readiness (unauthenticated, used by Docker HEALTHCHECK) ──────
+    @app.get("/healthz")
+    async def healthz():
         return {"status": "ok", "version": settings.APP_VERSION}
 
     @app.get("/ready")
@@ -105,6 +113,12 @@ def create_app() -> FastAPI:
     async def startup():
         log.info("SashaOps starting up", version=settings.APP_VERSION)
         init_database()
+        try:
+            from database.backup import backup_database
+            backup_database()
+            log.info("Pre-migration backup taken")
+        except Exception as _e:
+            log.warning("Pre-migration backup failed — continuing startup", error=str(_e)[:120])
         run_migrations()
         log.info("Database initialised")
         try:

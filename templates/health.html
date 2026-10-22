@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}System Health — SashaOps{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <div class="page-title">System Health</div>
+    <div class="page-subtitle">Operational status — only visible to the owner</div>
+  </div>
+</div>
+
+{# ── Status grid ─────────────────────────────────────────────────────────────── #}
+<div class="card mb-24">
+  <div class="card-title">Core checks</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,22rem),1fr));gap:12px;margin-top:12px">
+
+    {# 1. Database #}
+    <div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px">
+      <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Database</div>
+      {% if db_open %}
+      <div style="color:var(--pos);font-size:0.9rem">● Open — SQLCipher AES-256</div>
+      {% else %}
+      <div style="color:var(--neg);font-size:0.9rem">● Cannot reach database</div>
+      {% endif %}
+    </div>
+
+    {# 2. Signing key #}
+    <div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px">
+      <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Signing key</div>
+      {% if signing_key %}
+      <div style="color:var(--pos);font-size:0.9rem">● Present — {{ signing_algo or "ML-DSA" }}</div>
+      {% else %}
+      <div style="color:var(--warn);font-size:0.9rem">● Not generated yet</div>
+      <div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px">Go to Settings → run /generate-key once</div>
+      {% endif %}
+    </div>
+
+    {# 3. Audit chain #}
+    <div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px">
+      <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Audit chain</div>
+      {% if audit.valid %}
+      <div style="color:var(--pos);font-size:0.9rem">● Intact — {{ audit.checked }}/{{ audit.total }} entries verified</div>
+      {% elif audit.total == 0 %}
+      <div style="color:var(--text-muted);font-size:0.9rem">● No entries yet</div>
+      {% else %}
+      <div style="color:var(--neg);font-size:0.9rem">● Broken at entry #{{ audit.broken_id }}</div>
+      <div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px">{{ audit.reason }}</div>
+      {% endif %}
+    </div>
+
+    {# 4. Last backup #}
+    <div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px">
+      <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Last backup</div>
+      {% if backup %}
+      <div style="color:var(--pos);font-size:0.9rem">● {{ backup.mtime[:10] }} — {{ backup.size_mb }} MB</div>
+      <div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;font-family:var(--font-mono)">{{ backup.sha256[:16] if backup.sha256 else '' }}…</div>
+      {% else %}
+      <div style="color:var(--warn);font-size:0.9rem">● No backup found</div>
+      <div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px">Runs daily at 01:00 PKT and before every migration</div>
+      {% endif %}
+    </div>
+
+    {# 5. Pipeline run (M1 populates) #}
+    <div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px">
+      <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Pipeline last run</div>
+      <div style="color:var(--text-muted);font-size:0.9rem">— Not available yet</div>
+      <div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px">Available after M1</div>
+    </div>
+
+    {# 6. Review queue (M8 populates) #}
+    <div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px">
+      <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Review queue</div>
+      <div style="color:var(--text-muted);font-size:0.9rem">— Not available yet</div>
+      <div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px">Available after M8</div>
+    </div>
+
+    {# 7. Bronze disk (M2 populates) #}
+    <div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px">
+      <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Bronze storage</div>
+      {% if bronze_info %}
+      <div style="color:var(--pos);font-size:0.9rem">● {{ bronze_info.size_mb }} MB used · {{ bronze_info.free_gb }} GB free</div>
+      {% else %}
+      <div style="color:var(--text-muted);font-size:0.9rem">— Not available yet</div>
+      <div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px">Available after M2</div>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+
+{# ── Stale sources ───────────────────────────────────────────────────────────── #}
+<div class="card mb-24">
+  <div class="card-title">Data sources</div>
+  {% if stale %}
+  <div style="margin-top:12px">
+    <div style="font-size:0.82rem;color:var(--warn);margin-bottom:8px">{{ stale|length }} source{{ 's' if stale|length != 1 }} need attention</div>
+    <table style="font-size:0.85rem;border-collapse:collapse;width:100%">
+      <thead>
+        <tr style="color:var(--text-muted);border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:6px 8px;font-weight:500">Source</th>
+          <th style="text-align:left;padding:6px 8px;font-weight:500">Status</th>
+          <th style="text-align:left;padding:6px 8px;font-weight:500">Last run</th>
+          <th style="text-align:left;padding:6px 8px;font-weight:500">Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in stale %}
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px 8px">{{ row.label }}</td>
+          <td style="padding:6px 8px;color:{% if row.status == 'red' %}var(--neg){% else %}var(--warn){% endif %}">{{ row.status }}</td>
+          <td style="padding:6px 8px;color:var(--text-muted)">{{ row.last_run }}</td>
+          <td style="padding:6px 8px;color:var(--text-muted);font-size:0.8rem">{{ row.error or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="margin-top:12px;font-size:0.85rem;color:var(--pos)">● All data sources are fresh</div>
+  {% endif %}
+</div>
+
+{% endblock %}

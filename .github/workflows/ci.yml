@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main, v2]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Main quality gate ──────────────────────────────────────────────────────
+  test:
+    name: Quality gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # System libs needed by weasyprint, lxml, pdf2image and similar packages.
+      # pysqlcipher3 and liboqs-python are excluded from requirements-ci.txt;
+      # conftest.py patches them so tests run without their native builds.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b \
+            libfontconfig1 libglib2.0-0 libcairo2 \
+            libffi-dev tesseract-ocr poppler-utils \
+            fonts-liberation
+
+      - name: Install Python dependencies
+        run: pip install --require-hashes -r requirements-ci.txt
+
+      # Throwaway secrets — only used for the test session, never stored.
+      - name: Generate throwaway secrets
+        run: |
+          echo "APP_SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')" >> "$GITHUB_ENV"
+          echo "DB_MASTER_PASSWORD=$(python -c 'import secrets; print(secrets.token_hex(16))')" >> "$GITHUB_ENV"
+
+      - name: Run check.sh
+        run: bash scripts/check.sh
+        env:
+          APP_SECRET_KEY: ${{ env.APP_SECRET_KEY }}
+          DB_MASTER_PASSWORD: ${{ env.DB_MASTER_PASSWORD }}
+
+  # ── Release gate (runs only on vX.Y.Z tags) ───────────────────────────────
+  release-check:
+    name: Release check
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release_check.json
+        run: |
+          FILE="docs/pipeline/release_check.json"
+
+          if [ ! -f "$FILE" ]; then
+            echo "ERROR: $FILE is missing — run 'python tools/eval_corpus.py --release' locally and commit."
+            exit 1
+          fi
+
+          COMMIT=$(python3 -c "import json; d=json.load(open('$FILE')); print(d.get('commit',''))")
+          if [ "$COMMIT" != "$GITHUB_SHA" ]; then
+            echo "ERROR: $FILE is for commit $COMMIT, not $GITHUB_SHA."
+            echo "Re-run 'python tools/eval_corpus.py --release' on the tagged commit."
+            exit 1
+          fi
+
+          WRONG=$(python3 -c "import json; d=json.load(open('$FILE')); print(d.get('wrong_figures', 1))")
+          if [ "$WRONG" != "0" ]; then
+            echo "ERROR: $FILE reports $WRONG wrong figures. Target is 0."
+            exit 1
+          fi
+
+          echo "Release check passed — 0 wrong figures, commit matches."

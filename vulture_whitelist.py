@@ -7,7 +7,7 @@
 #
 # Rule: never whitelist anything that is not a framework-registered callable.
 
-from routers import auth, dashboard, documents, newsfeed, private, psx, reports, settings  # noqa: F401
+from routers import auth, dashboard, documents, newsfeed, private, psx, reports, settings, health  # noqa: F401
 
 # auth routes
 auth.login_get
@@ -49,6 +49,9 @@ psx.refresh_profile
 # reports routes
 reports.reports_page
 reports.download_pdf
+
+# health routes
+health.health_page
 
 # settings routes
 settings.settings_page

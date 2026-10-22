@@ -101,6 +101,7 @@ def test_build_jobs_covers_every_plan_job():
         "psx_financials", "psx_announcements", "sbp_monetary", "sbp_forex",
         "fbr_revenue", "nepra_power", "ogra_prices", "pbs_lsmi", "pta_stats",
         "worldbank_pak", "sector_medians", "news_feeds", "sanity_checks",
+        "daily_backup",
     }
     assert jobs == expected
 

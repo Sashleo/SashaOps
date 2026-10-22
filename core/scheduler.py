@@ -193,6 +193,12 @@ def _psx_financials_job() -> int:
     return bulk_refresh_psx_financials()
 
 
+def _backup_job() -> int:
+    from database.backup import backup_database
+    backup_database()
+    return 1
+
+
 def _news_feeds_job() -> int:
     """news_feeds already runs on its own 15-min cycle via core/feed_cache.py's
     run_feed_scheduler(), started independently at boot. This entry only records a
@@ -264,7 +270,10 @@ def build_jobs() -> list[Job]:
            _gov_scraper_job("intelligence.gov_scrapers.worldbank_pak", "WorldBankPakScraper"),
            "monthly (day 1) 08:00 PKT", _monthly_at(1, 8, 0), default_freshness_hours=8760),
 
-        # Derived / maintenance
+        # Derived / maintenance / ops
+        Job("daily_backup", "Database backup",
+           lambda: _run_plain("daily_backup", _backup_job),
+           "daily 01:00 PKT", _daily_at(1, 0), default_freshness_hours=30),
         Job("sector_medians", "PSX sector medians",
            lambda: _run_plain("sector_medians", _sector_medians_job),
            "daily 05:00 PKT", _daily_at(5, 0), default_freshness_hours=30),

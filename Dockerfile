@@ -89,6 +89,6 @@ EXPOSE 8000
 
 # Use -k to skip certificate verification for self-signed cert health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
-    CMD curl -fk https://localhost:8000/health || exit 1
+    CMD curl -fk https://localhost:8000/healthz || exit 1
 
 CMD ["python", "main.py"]
