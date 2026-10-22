@@ -29,10 +29,7 @@ _KEEP_LAST = 14
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def backup_database(
-    db_path: Optional[str] = None,  # unused with VACUUM INTO; kept for API compat
-    backup_dir: Optional[str] = None,
-) -> Path:
+def backup_database(backup_dir: Optional[str] = None) -> Path:
     """Create an encrypted backup with VACUUM INTO, write a SHA-256 sidecar.
 
     Returns the Path of the new backup.  Raises on I/O failure.
@@ -152,9 +149,10 @@ def _verify_restored_db(db_path: str, password: str, _connect_fn=None) -> None:
     """Open the restored database and run PRAGMA integrity_check."""
     if _connect_fn is None:
         from pysqlcipher3 import dbapi2 as _pysql  # type: ignore[import]
+        _pw = password.replace("'", "''")
         def _connect_fn(path: str):
             c = _pysql.connect(path)
-            c.execute(f"PRAGMA key='{password}'")
+            c.execute(f"PRAGMA key='{_pw}'")
             return c
     conn = _connect_fn(db_path)
     try:

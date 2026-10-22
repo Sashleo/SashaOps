@@ -15,6 +15,7 @@ like, what does it mean, and what do I do?"  No step needs an AI agent.
 6. [A backup failed](#6-a-backup-failed)
 7. [A migration failed](#7-a-migration-failed)
 8. [A release needs rolling back](#8-a-release-needs-rolling-back)
+9. [Verifying a backup](#9-verifying-a-backup)
 
 ---
 
@@ -243,6 +244,109 @@ open https://localhost:8000/health
 
 If the database was migrated forward and the old code can't read it, restore
 the pre-migration backup (section 7, step 4) before restarting on the old tag.
+
+---
+
+## 9. Verifying a backup
+
+Run inside the container after any backup you want to spot-check.
+
+### Step 1 — make a backup and record the path
+
+```
+docker exec sashaops bash -c "cd /app && PYTHONPATH=/app python3 - <<'PY'
+from database.connection import init_database, get_db
+init_database()
+from database.backup import backup_database
+bp = backup_database()
+print('Backup:', bp)
+PY"
+```
+
+Expected output:
+```
+Encrypted database opened  path=/app/data/sashaops.db
+database backup created    path=/app/data/backups/sashaops_YYYYMMDD_HHMMSS.db  sha256_prefix=...
+Backup: /app/data/backups/sashaops_YYYYMMDD_HHMMSS.db
+```
+
+### Step 2 — confirm the backup is encrypted (stdlib sqlite3 must fail)
+
+Replace `<backup>` with the path from Step 1.
+
+```
+docker exec sashaops python3 -c "
+import sqlite3, sys
+bp = '<backup>'
+try:
+    c = sqlite3.connect(bp)
+    c.execute('SELECT count(*) FROM sqlite_master').fetchall()
+    print('FAIL: opened without key — backup is not encrypted!')
+    sys.exit(1)
+except Exception as e:
+    print(f'PASS: {type(e).__name__}: {e}')
+"
+```
+
+Expected output: `PASS: DatabaseError: file is not a database`
+
+If you see `FAIL`, stop immediately and report — the backup file is unencrypted.
+
+### Step 3 — open with the app key and compare row counts
+
+```
+docker exec sashaops bash -c "cd /app && PYTHONPATH=/app python3 - <<'PY'
+from database.connection import init_database, get_db
+init_database()
+db = get_db()
+tables = [r[0] for r in db.execute(
+    \"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name\"
+).fetchall()]
+live = {t: db.execute(f'SELECT count(*) FROM {t}').fetchone()[0] for t in tables}
+
+from pysqlcipher3 import dbapi2 as sq
+from config.settings import settings
+bp = '<backup>'
+c = sq.connect(bp)
+pw = settings.DB_MASTER_PASSWORD.replace(\"'\", \"''\")
+c.execute(f\"PRAGMA key='{pw}'\")
+bk = {t: c.execute(f'SELECT count(*) FROM {t}').fetchone()[0] for t in tables}
+c.close()
+
+if live == bk:
+    print('PASS: row counts match live database')
+else:
+    print('MISMATCH:', {t: (live[t], bk[t]) for t in tables if live[t] != bk[t]})
+PY"
+```
+
+Expected output: `PASS: row counts match live database`
+
+### Step 4 — restore to a scratch path and run integrity_check
+
+```
+docker exec sashaops bash -c "cd /app && PYTHONPATH=/app python3 - <<'PY'
+import shutil
+from pysqlcipher3 import dbapi2 as sq
+from config.settings import settings
+bp = '<backup>'
+shutil.copy2(bp, '/tmp/scratch_restore.db')
+c = sq.connect('/tmp/scratch_restore.db')
+pw = settings.DB_MASTER_PASSWORD.replace(\"'\", \"''\")
+c.execute(f\"PRAGMA key='{pw}'\")
+rows = c.execute('PRAGMA integrity_check').fetchall()
+c.close()
+print('integrity_check:', rows)
+assert rows == [('ok',)], 'FAIL'
+print('PASS')
+PY"
+```
+
+Expected output:
+```
+integrity_check: [('ok',)]
+PASS
+```
 
 ---
 

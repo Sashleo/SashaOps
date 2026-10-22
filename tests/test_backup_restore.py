@@ -1,12 +1,13 @@
-"""M0: backup and restore round-trip, with SHA-256 verification."""
+"""Backup and restore round-trip tests, with SHA-256 and integrity verification."""
 
 from __future__ import annotations
 
 import hashlib
 import sqlite3
+import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -22,8 +23,8 @@ def _make_db(path: str) -> None:
     conn.close()
 
 
-def _mock_get_db(db_path: str):
-    """Return a real sqlite3 connection that answers VACUUM INTO."""
+def _open_db(db_path: str):
+    """Return a real sqlite3 connection that handles VACUUM INTO."""
     return sqlite3.connect(db_path)
 
 
@@ -35,20 +36,16 @@ def test_backup_creates_file_and_sha256_sidecar():
         backup_dir = str(Path(tmp) / "backups")
         _make_db(db_path)
 
-        conn = _mock_get_db(db_path)
-        with patch("database.connection.get_db", return_value=conn), \
+        with patch("database.connection.get_db", return_value=_open_db(db_path)), \
              patch("config.settings.settings") as ms:
-            ms.DATABASE_PATH  = db_path
             ms.BACKUP_COPY_DIR = ""
             from database.backup import backup_database
-            dest = backup_database(db_path=db_path, backup_dir=backup_dir)
+            dest = backup_database(backup_dir=backup_dir)
 
         assert dest.exists(), "backup file not created"
         sha_file = dest.with_suffix(".db.sha256")
         assert sha_file.exists(), ".sha256 sidecar not created"
-
-        expected = hashlib.sha256(dest.read_bytes()).hexdigest()
-        assert sha_file.read_text().strip() == expected
+        assert sha_file.read_text().strip() == hashlib.sha256(dest.read_bytes()).hexdigest()
 
 
 def test_restore_round_trip():
@@ -58,15 +55,12 @@ def test_restore_round_trip():
         _make_db(db_path)
         Path(backup_dir).mkdir()
 
-        conn = _mock_get_db(db_path)
-        with patch("database.connection.get_db", return_value=conn), \
+        with patch("database.connection.get_db", return_value=_open_db(db_path)), \
              patch("config.settings.settings") as ms:
-            ms.DATABASE_PATH  = db_path
             ms.BACKUP_COPY_DIR = ""
             from database.backup import backup_database
-            backup = backup_database(db_path=db_path, backup_dir=backup_dir)
+            backup = backup_database(backup_dir=backup_dir)
 
-        # Corrupt the live DB
         Path(db_path).write_bytes(b"corrupted-data")
 
         with patch("config.settings.settings") as ms, \
@@ -75,7 +69,6 @@ def test_restore_round_trip():
             from database.backup import restore_database
             restore_database(str(backup), db_path=db_path)
 
-        # Restored DB must be readable and contain original row
         rconn = sqlite3.connect(db_path)
         row   = rconn.execute("SELECT val FROM kv WHERE id=1").fetchone()
         rconn.close()
@@ -89,15 +82,12 @@ def test_restore_rejects_corrupt_backup():
         _make_db(db_path)
         Path(backup_dir).mkdir()
 
-        conn = _mock_get_db(db_path)
-        with patch("database.connection.get_db", return_value=conn), \
+        with patch("database.connection.get_db", return_value=_open_db(db_path)), \
              patch("config.settings.settings") as ms:
-            ms.DATABASE_PATH  = db_path
             ms.BACKUP_COPY_DIR = ""
             from database.backup import backup_database
-            backup = backup_database(db_path=db_path, backup_dir=backup_dir)
+            backup = backup_database(backup_dir=backup_dir)
 
-        # Corrupt the backup file after the sidecar was written
         backup.write_bytes(b"this is not the original")
 
         with patch("config.settings.settings") as ms:
@@ -114,15 +104,12 @@ def test_restore_refuses_when_sha256_missing():
         _make_db(db_path)
         Path(backup_dir).mkdir()
 
-        conn = _mock_get_db(db_path)
-        with patch("database.connection.get_db", return_value=conn), \
+        with patch("database.connection.get_db", return_value=_open_db(db_path)), \
              patch("config.settings.settings") as ms:
-            ms.DATABASE_PATH  = db_path
             ms.BACKUP_COPY_DIR = ""
             from database.backup import backup_database
-            backup = backup_database(db_path=db_path, backup_dir=backup_dir)
+            backup = backup_database(backup_dir=backup_dir)
 
-        # Delete the sidecar — restore must refuse
         backup.with_suffix(".db.sha256").unlink()
 
         with patch("config.settings.settings") as ms:
@@ -139,15 +126,12 @@ def test_restore_runs_integrity_check():
         _make_db(db_path)
         Path(backup_dir).mkdir()
 
-        conn = _mock_get_db(db_path)
-        with patch("database.connection.get_db", return_value=conn), \
+        with patch("database.connection.get_db", return_value=_open_db(db_path)), \
              patch("config.settings.settings") as ms:
-            ms.DATABASE_PATH  = db_path
             ms.BACKUP_COPY_DIR = ""
             from database.backup import backup_database
-            backup = backup_database(db_path=db_path, backup_dir=backup_dir)
+            backup = backup_database(backup_dir=backup_dir)
 
-        # Verify _verify_restored_db is called with (db_path, password)
         with patch("config.settings.settings") as ms, \
              patch("database.backup._verify_restored_db") as mock_verify:
             ms.DATABASE_PATH      = db_path
@@ -156,22 +140,42 @@ def test_restore_runs_integrity_check():
             restore_database(str(backup), db_path=db_path)
         mock_verify.assert_called_once_with(db_path, "testpw")
 
-        # Direct test: _verify_restored_db passes for a healthy sqlite3 db
         from database.backup import _verify_restored_db
         _verify_restored_db(db_path, "ignored", _connect_fn=sqlite3.connect)
 
 
+def test_verify_key_escapes_single_quote(tmp_path):
+    """PRAGMA key must use SQL-escaped password ('' for each ')."""
+    db_path = str(tmp_path / "test.db")
+    _make_db(db_path)
+
+    mock_conn = MagicMock()
+    mock_conn.execute.return_value.fetchall.return_value = [("ok",)]
+    mock_dbapi2 = MagicMock()
+    mock_dbapi2.connect.return_value = mock_conn
+    mock_pkg = MagicMock()
+    mock_pkg.dbapi2 = mock_dbapi2
+
+    with patch.dict(sys.modules, {"pysqlcipher3": mock_pkg}):
+        from database.backup import _verify_restored_db
+        _verify_restored_db(db_path, "pass'word")
+
+    # Confirm PRAGMA key was sent with the escaped password
+    pragma_sqls = [c.args[0] for c in mock_conn.execute.call_args_list]
+    key_stmts = [s for s in pragma_sqls if "PRAGMA key" in s]
+    assert len(key_stmts) == 1, f"Expected one PRAGMA key call, got: {pragma_sqls}"
+    assert "pass''word" in key_stmts[0], f"Expected escaped quote in: {key_stmts[0]}"
+
+
 def test_prune_keeps_14_most_recent():
     with tempfile.TemporaryDirectory() as tmp:
-        # Create 20 fake backup files
         for i in range(20):
             (Path(tmp) / f"sashaops_20260101_{i:06d}.db").write_bytes(b"x")
 
         from database.backup import _prune_backups
         _prune_backups(tmp, keep=14)
 
-        remaining = list(Path(tmp).glob("sashaops_*.db"))
-        assert len(remaining) == 14
+        assert len(list(Path(tmp).glob("sashaops_*.db"))) == 14
 
 
 def test_list_backups_newest_first():
