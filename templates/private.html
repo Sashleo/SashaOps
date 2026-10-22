@@ -164,8 +164,10 @@
       <tr><td style="color:var(--text-dim)">Per share</td>
           <td style="font-family:var(--font-mono); text-align:right">PKR {{ '{:,.2f}'.format(result.dcf.per_share) }}</td></tr>
       {% endif %}
+      {% if result.dcf.tv_share_of_ev is not none %}
       <tr><td style="color:var(--text-dim)">TV share of EV</td>
           <td style="font-family:var(--font-mono); text-align:right">{{ '{:,.1f}'.format(result.dcf.tv_share_of_ev) }}%</td></tr>
+      {% endif %}
     </table>
     </div>
   </div>
