@@ -130,6 +130,10 @@ def _human_value(job_id: str, row: Optional[dict]) -> str:
     except Exception:
         pass
     n = row.get("rows_inserted")
+    if n is not None and n == 0 and row.get("status") == "success":
+        from database.scrape_log import last_inserted_at
+        since = last_inserted_at(job_id)
+        return f"no new rows since {since}" if since else "no rows ever stored"
     return f"{n} row{'s' if n != 1 else ''}" if n is not None else "-"
 
 
@@ -167,6 +171,8 @@ def compute_data_health() -> list[dict]:
                 age_hours is not None
                 and job.default_freshness_hours < age_hours <= job.default_freshness_hours * 3
             ):
+                status = "amber"
+            elif db_status == "success" and (row.get("rows_inserted") or 0) == 0:
                 status = "amber"
             elif db_status == "success":
                 status = "green"

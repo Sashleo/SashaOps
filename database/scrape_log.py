@@ -77,6 +77,21 @@ def latest_all() -> dict:
         return {}
 
 
+def last_inserted_at(scraper_id: str) -> Optional[str]:
+    """ISO date of the most recent run that stored at least one row, or None."""
+    try:
+        from database.connection import get_db
+        row = get_db().execute(
+            "SELECT started_at FROM scrape_log "
+            "WHERE scraper_id = ? AND rows_inserted > 0 "
+            "ORDER BY started_at DESC LIMIT 1",
+            (scraper_id,),
+        ).fetchone()
+        return row["started_at"][:10] if row else None
+    except Exception:
+        return None
+
+
 def success_rate(scraper_id: str, last_n: int = 20) -> float:
     """Share of the last N runs that were SUCCESS. 0.0 when there is no history."""
     try:

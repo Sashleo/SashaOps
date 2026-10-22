@@ -90,3 +90,16 @@ def test_no_data_is_amber_for_ordinary_jobs(monkeypatch):
                                       "rows_inserted": 0, "error_message": None}})
     row = compute_data_health()[0]
     assert row["status"] == "amber"
+
+
+def test_success_zero_rows_is_amber_not_green(monkeypatch):
+    """A scraper that ran without error but stored 0 new rows is amber, not green."""
+    monkeypatch.setattr("core.scheduler.build_jobs", lambda: [_fake_job("fbr_revenue", freshness=168)])
+    monkeypatch.setattr("database.scrape_log.latest_all",
+                        lambda: {"fbr_revenue": {"status": "success", "started_at": _iso(0.5),
+                                                 "rows_inserted": 0, "error_message": None}})
+    monkeypatch.setattr("database.scrape_log.last_inserted_at", lambda sid: "2026-10-12")
+    row = compute_data_health()[0]
+    assert row["status"] == "amber"
+    assert "no new rows" in row["value"]
+    assert "2026-10-12" in row["value"]
