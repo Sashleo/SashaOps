@@ -29,7 +29,7 @@ from database.connection import get_db
 
 log = structlog.get_logger()
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Legacy tables from the old multi-region schema. Their presence triggers a full reset.
 _LEGACY_TABLES = (
@@ -492,6 +492,8 @@ def run_migrations() -> None:
             _drop_all_tables(db)
         _drop_deprecated_tables(db)
         db.executescript(TABLES)
+        from pipeline.store import create_pipeline_tables
+        create_pipeline_tables(db)
         _apply_column_additions(db)
         db.commit()
         log.info("Database schema ready", version=SCHEMA_VERSION)
