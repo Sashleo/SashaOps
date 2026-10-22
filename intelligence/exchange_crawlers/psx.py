@@ -12,8 +12,16 @@ All endpoints return static HTML / JSON — no browser required.
 
 from __future__ import annotations
 
+import time
+import random
 import requests
 from bs4 import BeautifulSoup
+
+# Politeness delay between consecutive PSX page requests (seconds).
+# Keeps the scraper well under PSX's rate-limit threshold.
+# Set PSX_REQUEST_DELAY=0 in the environment to disable (unit tests only).
+import os as _os
+_REQUEST_DELAY = float(_os.environ.get("PSX_REQUEST_DELAY", "1.5"))
 
 BASE_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
@@ -122,6 +130,9 @@ def fetch_psx_company(ticker: str, fetch_types: list[str]) -> dict:
     """
     ticker = ticker.strip().upper()
     url    = COMPANY_URL.format(ticker=ticker)
+
+    if _REQUEST_DELAY > 0:
+        time.sleep(_REQUEST_DELAY + random.uniform(0, 0.5))
 
     try:
         r = requests.get(url, headers=BASE_HEADERS, timeout=15)

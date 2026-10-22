@@ -6,8 +6,12 @@ against live data, and both would have corrupted every downstream ratio, trend a
 chart while looking entirely plausible on screen.
 """
 
+from bs4 import BeautifulSoup
+
+from intelligence.exchange_crawlers.psx import _parse_financial_table
 from intelligence.psx_financials import (
     _same_reporting_basis, _plausible_balance_sheet_value, build_period_rows,
+    _build_doc_financials,
 )
 
 
@@ -86,3 +90,62 @@ def test_build_period_rows_splits_every_period():
 def test_build_period_rows_ignores_unmapped_metrics():
     rows = build_period_rows({"Some Unmapped Ratio (%)": {"2025": 12.3}})
     assert rows == {}
+
+
+# ── Single-period table guard (crash regression 2026-10-12) ──────────────────
+# PSX occasionally returns a financials table with only ONE period column (newly
+# listed companies, companies in suspension). The parser must never crash on this;
+# it must return usable data for that single year.
+
+def _table_from_html(html: str):
+    return BeautifulSoup(html, "lxml").find("table")
+
+
+def test_single_period_table_parses_without_crash():
+    # Minimal single-period HTML financial table (newly listed company).
+    html = """<table>
+      <tr><th>Metric</th><th>2026</th></tr>
+      <tr><td>Net Sales</td><td>5,000,000</td></tr>
+      <tr><td>Profit after taxation</td><td>500,000</td></tr>
+      <tr><td>EPS</td><td>2.50</td></tr>
+    </table>"""
+    result = _parse_financial_table(_table_from_html(html))
+    assert result["Net Sales"] == {"2026": 5_000_000.0}
+    assert result["Profit after taxation"] == {"2026": 500_000.0}
+
+
+def test_single_period_table_flows_through_doc_builder():
+    # Confirm the single-period table produces a usable doc with revenue + fiscal year.
+    table = {
+        "Net Sales": {"2026": 5_000_000.0},
+        "Profit after taxation": {"2026": 500_000.0},
+        "EPS": {"2026": 2.5},
+    }
+    doc = _build_doc_financials(table)
+    assert doc["revenue"] == 5_000_000.0
+    assert doc["net_income"] == 500_000.0
+    assert doc["eps"] == 2.5
+    assert doc["_fiscal_year"] == "2026"
+    # No revenue_prior_year / revenue_2y_ago when there is only one period.
+    assert "revenue_prior_year" not in doc
+    assert "revenue_2y_ago" not in doc
+
+
+def test_zero_period_table_returns_empty():
+    # A company in suspension may return a table with NO period columns at all.
+    html = """<table>
+      <tr><th>Metric</th></tr>
+      <tr><td>Net Sales</td></tr>
+    </table>"""
+    result = _parse_financial_table(_table_from_html(html))
+    # Parser must not crash; metrics with no period values come back as {}.
+    assert result == {"Net Sales": {}}
+
+
+def test_header_only_table_returns_empty():
+    # Edge case: table with period headers but no data rows.
+    html = """<table>
+      <tr><th>Metric</th><th>2026</th><th>2025</th></tr>
+    </table>"""
+    result = _parse_financial_table(_table_from_html(html))
+    assert result == {}
