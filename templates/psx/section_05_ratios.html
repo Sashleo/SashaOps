@@ -14,7 +14,7 @@
 <div style="margin-bottom:16px">
   <div style="font-size:0.82em; color:var(--text-secondary)">{{ c1.title }}</div>
   <button class="chart-open" type="button" aria-label="Open chart: {{ c1.title }}">
-    <div class="chart-frame" style="--chart-h:140px">
+    <div class="chart-frame">
       <canvas id="chart1-{{ a.ticker }}" data-sashaops-chart="{{ c1.spec_json|e }}"></canvas>
     </div>
   </button>
@@ -82,7 +82,7 @@
 <div style="margin-top:16px">
   <div style="font-size:0.82em; color:var(--text-secondary)">{{ c5.title }}</div>
   <button class="chart-open" type="button" aria-label="Open chart: {{ c5.title }}">
-    <div class="chart-frame" style="--chart-h:120px">
+    <div class="chart-frame">
       <canvas id="chart5-{{ a.ticker }}" data-sashaops-chart="{{ c5.spec_json|e }}"></canvas>
     </div>
   </button>

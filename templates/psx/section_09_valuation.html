@@ -69,7 +69,7 @@
 <div style="margin-top:16px">
   <div style="font-size:0.82em; color:var(--text-secondary)">{{ c8.title }}</div>
   <button class="chart-open" type="button" aria-label="Open chart: {{ c8.title }}">
-    <div class="chart-frame" style="--chart-h:140px">
+    <div class="chart-frame">
       <canvas id="chart8-{{ a.ticker }}" data-sashaops-chart="{{ c8.spec_json|e }}"></canvas>
     </div>
   </button>

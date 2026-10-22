@@ -8,7 +8,7 @@
     <div class="page-title">Reports</div>
     <div class="page-subtitle">
       {% if active_client %}{{ active_client.name }}{% else %}Select a client{% endif %}
-      · {{ reports|length if reports else 0 }} reports{% if total_all > (reports|length) %} ({{ total_all }} across all clients){% endif %}
+      · {{ reports|length if reports else 0 }} reports{% if total_all > (reports|length) %} ({{ total_all }} across all clients, {{ signed_count }} signed){% endif %}
       {% if last_signed %} · Last signed {{ last_signed }}{% endif %}
     </div>
   </div>
