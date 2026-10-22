@@ -25,6 +25,7 @@
 <form method="post"
       action="{% if mode == 'psx' %}/psx/{{ ticker }}/analyse-entry{% else %}/private/analyse{% endif %}"
       class="entry-form">
+  {% if mode == "psx" %}<input type="hidden" name="period" value="{{ entry_period }}">{% endif %}
 
   {% if mode == "private" %}
   <div class="entry-section">
@@ -123,6 +124,20 @@
     <button type="submit" class="btn btn-primary">
       {% if mode == "psx" %}Run DCF{% else %}Analyse{% endif %}
     </button>
+    {% if mode == "psx" %}
+      <button type="submit" formaction="/psx/{{ ticker }}/save-overrides"
+              class="btn" id="entry-save-overrides-btn"
+              hx-post="/psx/{{ ticker }}/save-overrides"
+              hx-target="#override-status"
+              hx-swap="innerHTML"
+              onclick="this.form.querySelector('[name=period]').value='{{ entry_period }}'">Save values</button>
+      <button type="button" class="btn"
+              hx-post="/psx/{{ ticker }}/clear-overrides"
+              hx-target="#override-status"
+              hx-swap="innerHTML"
+              hx-confirm="Clear all saved values for {{ ticker }}?">Clear overrides</button>
+      <span id="override-status" style="font-size:0.82em;color:var(--text-muted)"></span>
+    {% endif %}
     {% if mode == "private" %}
       {% if active_client %}
       <div style="display:flex;gap:var(--s-2);align-items:center;flex-wrap:wrap">

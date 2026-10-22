@@ -93,7 +93,8 @@ CREATE TABLE IF NOT EXISTS documents (
 -- ── Reports ───────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS reports (
     id              TEXT PRIMARY KEY,
-    client_id       TEXT NOT NULL,
+    client_id       TEXT,
+    ticker          TEXT,
     business_name   TEXT NOT NULL,
     report_type     TEXT NOT NULL,
     modules_included TEXT,
@@ -439,6 +440,17 @@ CREATE TABLE IF NOT EXISTS private_entries (
 CREATE INDEX IF NOT EXISTS ix_private_entries_client
     ON private_entries(client_id, saved_at DESC);
 
+-- Financial overrides: owner-entered figures for PSX tickers, keyed by
+-- ticker + period + field. Read by build_analysis() over scraped values.
+CREATE TABLE IF NOT EXISTS financial_overrides (
+    ticker      TEXT NOT NULL,
+    period      TEXT NOT NULL,
+    field       TEXT NOT NULL,
+    value_pkr_t REAL,
+    edited_at   TEXT NOT NULL,
+    PRIMARY KEY (ticker, period, field)
+);
+
 -- DCF valuation assumption overrides (user-editable via Settings; NULL = use live/fallback)
 CREATE TABLE IF NOT EXISTS dcf_assumptions (
     key            TEXT PRIMARY KEY,
@@ -504,6 +516,9 @@ def _apply_column_additions(db) -> None:
     # to multi-entry schema (id PK). Runs only once; the old table has no production
     # data worth preserving (it was just created in this sprint).
     _migrate_private_entries(db)
+    # Migrate reports: make client_id nullable, add ticker column for PSX exports.
+    # The reports table never held production data in v2.
+    _migrate_reports_schema(db)
 
     _add_column_if_missing(db, "psx_companies", "market_cap", "REAL")
     # Phase 2: everything the PSX company page displays (Equity + Company Profile).
@@ -558,6 +573,20 @@ def _migrate_private_entries(db) -> None:
         # Old schema: client_id TEXT PRIMARY KEY. Recreate.
         db.execute("DROP TABLE IF EXISTS private_entries")
         log.info("Migrated private_entries to multi-entry schema")
+
+
+def _migrate_reports_schema(db) -> None:
+    """One-time: if reports.client_id is NOT NULL (old schema), drop and recreate.
+    Adds ticker column for PSX exports. No production data in this table in v2."""
+    existing = db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='reports'"
+    ).fetchone()
+    if not existing:
+        return
+    cols = {row[1]: row[3] for row in db.execute("PRAGMA table_info(reports)")}
+    if cols.get("client_id") == 1 or "ticker" not in cols:
+        db.execute("DROP TABLE IF EXISTS reports")
+        log.info("Migrated reports table: client_id nullable, ticker column added")
 
 
 def _add_column_if_missing(db, table: str, column: str, col_type: str) -> None:

@@ -170,6 +170,41 @@ def _load_price(db, ticker: str, a: PSXAnalysis) -> None:
     a.source("market", "PSX daily quote", "html_bs4", d.get("trade_date"))
 
 
+_INC_FIELDS = frozenset((
+    "revenue", "gross_profit", "ebitda", "ebit", "net_income",
+    "interest_expense", "depreciation",
+))
+_BS_FIELDS = frozenset((
+    "total_assets", "total_equity", "total_debt", "cash", "current_assets",
+    "current_liabilities", "retained_earnings", "inventory", "receivables", "payables",
+))
+_CF_FIELDS = frozenset(("ocf", "capex"))
+
+
+def _apply_financial_overrides(db, ticker: str, a: PSXAnalysis) -> None:
+    """Merge owner-entered figures into the analysis, overwriting scraped values."""
+    try:
+        rows = db.execute(
+            "SELECT period, field, value_pkr_t FROM financial_overrides WHERE ticker = ?",
+            (ticker,),
+        ).fetchall()
+    except Exception:
+        return
+    for row in rows:
+        period = row["period"]
+        field_name = row["field"]
+        raw = row["value_pkr_t"]
+        val = float(raw) * PKR_THOUSANDS if raw is not None else None
+        if period not in a.annual_periods:
+            a.annual_periods.append(period)
+        if field_name in _INC_FIELDS:
+            a.income_statement.setdefault(period, {})[field_name] = val
+        elif field_name in _BS_FIELDS:
+            a.balance_sheet.setdefault(period, {})[field_name] = val
+        elif field_name in _CF_FIELDS:
+            a.cash_flow.setdefault(period, {})[field_name] = val
+
+
 def _load_statements(db, ticker: str, a: PSXAnalysis) -> None:
     """Load every stored period, scaled to actual PKR exactly once."""
     rows = db.execute(
@@ -513,6 +548,7 @@ def build_analysis(ticker: str) -> PSXAnalysis:
 
     _load_price(db, ticker, a)
     _load_statements(db, ticker, a)
+    _apply_financial_overrides(db, ticker, a)
     _load_quarterly(db, ticker, a)
     _load_announcements(db, ticker, a)
 
