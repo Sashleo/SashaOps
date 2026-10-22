@@ -93,7 +93,6 @@ class PdfplumberTextExtractor:
         head_chunks: list[str] = []
         seen_statement = False
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-            n = len(pdf.pages)
             for i, page in enumerate(pdf.pages[:self._SEEK_CAP]):
                 t = page.extract_text() or ""
                 if not t:

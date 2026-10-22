@@ -220,7 +220,7 @@ def test_asset_split_must_rebuild_the_total():
 # ── Page classification: summary vs audited statement ─────────────────────────
 
 from intelligence.statement_locator import (  # noqa: E402
-    classify_page, count_money_columns, parse_multi_period, merge_periods,
+    classify_page, parse_multi_period, merge_periods,
     extract_period_labels, SUMMARY_MIN_COLUMNS,
 )
 

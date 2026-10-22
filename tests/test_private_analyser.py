@@ -6,11 +6,9 @@ Zero, negative, huge, and empty values must give results or field messages, neve
 import pytest
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
-from unittest.mock import MagicMock, patch
 
 
 def _make_app():
-    from fastapi import FastAPI
     import routers.private as rp
 
     app = FastAPI()
@@ -43,7 +41,6 @@ def client(monkeypatch):
     })
     monkeypatch.setattr(rp, "_sectors", lambda: ["Cement", "Banking"])
 
-    from database.private_entries import list_entries
     monkeypatch.setattr("database.private_entries.list_entries", lambda *a: [])
 
     return TestClient(app, raise_server_exceptions=False)
@@ -149,7 +146,7 @@ def test_dcf_tv_share_none_no_500(client, monkeypatch):
     """DCFResult.tv_share_of_ev = None must not crash the template (line 168 of private.html)."""
     from intelligence.metrics import DCFResult
 
-    def _mock_dcf(**kwargs):
+    def _mock_dcf(**_kwargs):
         r = DCFResult()
         r.computable = True
         r.enterprise_value = 1_000_000_000

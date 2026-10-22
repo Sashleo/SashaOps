@@ -10,7 +10,7 @@ from __future__ import annotations
 import threading
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
@@ -135,8 +135,7 @@ def _recent(limit: int = 25, sector: str = "") -> list:
 @router.get("/", response_class=HTMLResponse)
 async def landing(request: Request, sector: str = ""):
     require_session(request)
-    return templates.TemplateResponse("psx.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "psx.html", {
         "active_page": "psx",
         "sectors": _sectors(),
         "selected_sector": sector,
@@ -167,8 +166,8 @@ async def search(request: Request, q: str = ""):
             results = [dict(r) for r in rows]
         except Exception as e:
             log.info("search failed", error=str(e)[:100])
-    return templates.TemplateResponse("psx/_search_results.html", {
-        "request": request, "results": results, "q": q,
+    return templates.TemplateResponse(request, "psx/_search_results.html", {
+        "results": results, "q": q,
     })
 
 
@@ -235,8 +234,7 @@ async def analysis(request: Request, ticker: str, tab: str = "overview"):
             prefill["current_price"] = a.current_price
         _fill_dcf_defaults(prefill, a.is_bank)
 
-    return templates.TemplateResponse("psx_analysis.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "psx_analysis.html", {
         "active_page": "psx",
         "a": a,
         "tabs": TABS,
@@ -266,7 +264,7 @@ async def tab_panel(request: Request, ticker: str, tab_name: str):
     log.debug("tab panel", ticker=tk, tab=tab_name, build_ms=build_ms)
 
     ctx = {
-        "request": request, "a": a, "active_tab": tab_name,
+        "a": a, "active_tab": tab_name,
         "tabs": TABS, "tab_labels": TAB_LABELS,
         "sections": SECTIONS, "pending_sections": PENDING_SECTIONS,
     }
@@ -288,7 +286,7 @@ async def tab_panel(request: Request, ticker: str, tab_name: str):
         ctx.update(mode="psx", prefill=prefill, sectors=[], ticker=tk,
                    entry_period=a.latest_period or "")
 
-    return templates.TemplateResponse("psx/_tab_panel_response.html", ctx)
+    return templates.TemplateResponse(request, "psx/_tab_panel_response.html", ctx)
 
 
 def is_refreshing(ticker: str) -> bool:
@@ -351,8 +349,8 @@ async def staleness(request: Request, ticker: str):
     from intelligence.psx_analyser import build_analysis
     tk = (ticker or "").strip().upper()
     still_refreshing = is_refreshing(tk)
-    resp = templates.TemplateResponse("psx/_staleness.html", {
-        "request": request, "a": build_analysis(tk), "refreshing": still_refreshing,
+    resp = templates.TemplateResponse(request, "psx/_staleness.html", {
+        "a": build_analysis(tk), "refreshing": still_refreshing,
     })
     # When the scrape finishes, tell HTMX to reload the full page so all
     # section data (charts, ratios, verdicts) reflects the fresh scraped values.
@@ -442,8 +440,8 @@ async def run_dcf(request: Request, ticker: str):
         is_bank=a.is_bank,
     )
 
-    return templates.TemplateResponse("psx/_dcf_result.html", {
-        "request": request, "a": a, "dcf": dcf,
+    return templates.TemplateResponse(request, "psx/_dcf_result.html", {
+        "a": a, "dcf": dcf,
     })
 
 
@@ -593,8 +591,7 @@ async def analyse_entry(request: Request, ticker: str):
             is_bank=a.is_bank,
         )
 
-    return templates.TemplateResponse("psx/_entry_result.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "psx/_entry_result.html", {
         "ticker":  tk,
         "period":  latest,
         "result":  result,

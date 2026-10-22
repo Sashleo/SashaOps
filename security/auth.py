@@ -22,11 +22,11 @@ import qrcode
 import io
 import base64
 import structlog
-from fastapi import Request, Response
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import RedirectResponse
 
-from security.crypto import hash_password, verify_password, encrypt, decrypt
+from security.crypto import encrypt, decrypt
 from config.settings import settings
 
 log = structlog.get_logger()

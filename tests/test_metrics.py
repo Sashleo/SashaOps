@@ -475,8 +475,8 @@ def test_dcf_scenarios_present():
 
 
 def test_dcf_equity_value_net_debt():
-    # equity_value = enterprise_value - net_debt
-    # net_debt = total_debt - cash = 2M - 0.5M = 1.5M
+    # equity_value = enterprise_value - net_debt  # noqa: ERA001
+    # net_debt = total_debt - cash = 2M - 0.5M = 1.5M  # noqa: ERA001
     r = compute_dcf(**_DCF_BASE)
     assert r.equity_value == pytest.approx(r.enterprise_value - 1_500_000, abs=10)
 
@@ -548,14 +548,14 @@ def test_health_revenue_growth_above_10pct_passes():
 # ---------------------------------------------------------------------------
 
 def test_dcf_per_share_absolute_shares():
-    # equity_value ≈ enterprise_value - net_debt
-    # per_share = equity_value / shares
-    # If shares were inflated by 1,000,000x, per_share would be ~0 instead of a real price
+    # equity_value ≈ enterprise_value - net_debt  # noqa: ERA001
+    # per_share = equity_value / shares  # noqa: ERA001
+    # If shares were inflated by 1,000,000x, per_share would be ~0 instead of a real price  # noqa: ERA001
     r = compute_dcf(**_DCF_BASE)  # shares_outstanding = 1_000_000 absolute
     assert r.computable is True
-    # equity = EV - (2M - 0.5M) = EV - 1.5M
-    # per_share = equity / 1_000_000
-    # Should be in the PKR 1–10,000 range, not near zero
+    # equity = EV - (2M - 0.5M) = EV - 1.5M  # noqa: ERA001
+    # per_share = equity / 1_000_000  # noqa: ERA001
+    # Should be in the PKR 1–10,000 range, not near zero  # noqa: ERA001
     assert r.per_share is not None
     assert abs(r.per_share) > 0.01  # not vanishingly small
 

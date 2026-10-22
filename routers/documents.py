@@ -14,7 +14,7 @@ from security.auth import require_session
 from database.clients import list_clients, get_client_salt
 from database.documents import (
     save_document, list_documents, delete_document,
-    get_document_bytes, detect_doc_type,
+    detect_doc_type,
 )
 from config.settings import settings
 
@@ -83,8 +83,7 @@ async def documents_page(request: Request):
     if active_client:
         docs = list_documents(active_client["id"])
 
-    return templates.TemplateResponse("documents.html", {
-        "request":    request,
+    return templates.TemplateResponse(request, "documents.html", {
         "active_page": "documents",
         "documents":  docs,
         **sidebar,

@@ -12,11 +12,10 @@ All symmetric operations use AES-256 which provides 128-bit security
 against quantum attacks via Grover's algorithm — considered safe.
 """
 
-import os
 import secrets
 import hashlib
 import hmac
-from typing import Tuple, Optional
+from typing import Optional
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -89,14 +88,6 @@ def derive_master_key(password: str, salt: bytes) -> bytes:
     Returns:
         32-byte master key
     """
-    ph = PasswordHasher(
-        time_cost=3,
-        memory_cost=65536,
-        parallelism=4,
-        hash_len=32,
-        salt_len=len(salt),
-        encoding="utf-8",
-    )
     # Use argon2-cffi's low-level interface for raw key derivation
     from argon2.low_level import hash_secret_raw, Type
     return hash_secret_raw(

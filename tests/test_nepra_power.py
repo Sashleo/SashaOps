@@ -7,7 +7,6 @@ These tests lock in the real source: nepra.org.pk's table of recent determinatio
 newest first, each row carrying a date and a determination PDF link.
 """
 
-import re
 
 from intelligence.gov_scrapers.nepra_power import _DATE_RE, _REF_RE
 

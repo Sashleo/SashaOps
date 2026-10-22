@@ -5,7 +5,6 @@ Signs PDF and DOCX files on generation.
 Stores public key in database for verification.
 """
 
-import hashlib
 from typing import Optional, Tuple
 
 import structlog

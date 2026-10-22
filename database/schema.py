@@ -562,31 +562,90 @@ def _apply_column_additions(db) -> None:
 
 def _migrate_private_entries(db) -> None:
     """One-time: if private_entries has client_id as primary key (old schema),
-    drop and recreate it with id as PK so multiple entries per client are supported."""
+    copy rows into a new table with id as PK, then rename — never DROP first."""
     existing = db.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='private_entries'"
     ).fetchone()
     if not existing:
         return  # table doesn't exist yet; CREATE TABLE IF NOT EXISTS will create it
     cols = {row[1] for row in db.execute("PRAGMA table_info(private_entries)")}
-    if "id" not in cols:
-        # Old schema: client_id TEXT PRIMARY KEY. Recreate.
-        db.execute("DROP TABLE IF EXISTS private_entries")
-        log.info("Migrated private_entries to multi-entry schema")
+    if "id" in cols:
+        return  # already on new schema
+    # Old schema: client_id TEXT PRIMARY KEY, no id column.
+    # Build new table, copy whatever columns the old row has, then swap.
+    db.execute("DROP TABLE IF EXISTS private_entries_new")
+    db.execute("""
+        CREATE TABLE private_entries_new (
+            id           TEXT PRIMARY KEY,
+            client_id    TEXT NOT NULL,
+            entry_name   TEXT NOT NULL,
+            company_name TEXT,
+            data_json    TEXT NOT NULL,
+            saved_at     TEXT NOT NULL,
+            FOREIGN KEY (client_id) REFERENCES clients(id)
+        )
+    """)
+    old_cols = {row[1] for row in db.execute("PRAGMA table_info(private_entries)")}
+    # Columns that exist in both old and new (excluding id which we derive from client_id)
+    transferable = sorted(old_cols & {"entry_name", "company_name", "data_json", "saved_at"})
+    col_list = ", ".join(transferable)
+    db.execute(f"""
+        INSERT OR IGNORE INTO private_entries_new (id, client_id, {col_list})
+        SELECT client_id, client_id, {col_list} FROM private_entries
+    """)
+    db.execute("DROP TABLE private_entries")
+    db.execute("ALTER TABLE private_entries_new RENAME TO private_entries")
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS ix_private_entries_client "
+        "ON private_entries(client_id, saved_at DESC)"
+    )
+    log.info("Migrated private_entries to multi-entry schema")
 
 
 def _migrate_reports_schema(db) -> None:
-    """One-time: if reports.client_id is NOT NULL (old schema), drop and recreate.
-    Adds ticker column for PSX exports. No production data in this table in v2."""
+    """One-time: if reports.client_id is NOT NULL (old schema) or ticker is missing,
+    copy rows into a new table with the updated schema, then rename — never DROP first."""
     existing = db.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='reports'"
     ).fetchone()
     if not existing:
         return
     cols = {row[1]: row[3] for row in db.execute("PRAGMA table_info(reports)")}
-    if cols.get("client_id") == 1 or "ticker" not in cols:
-        db.execute("DROP TABLE IF EXISTS reports")
-        log.info("Migrated reports table: client_id nullable, ticker column added")
+    if cols.get("client_id") != 1 and "ticker" in cols:
+        return  # already on new schema
+    db.execute("DROP TABLE IF EXISTS reports_new")
+    db.execute("""
+        CREATE TABLE reports_new (
+            id              TEXT PRIMARY KEY,
+            client_id       TEXT,
+            ticker          TEXT,
+            business_name   TEXT NOT NULL,
+            report_type     TEXT NOT NULL,
+            modules_included TEXT,
+            pdf_path        TEXT,
+            docx_path       TEXT,
+            signature_path  TEXT,
+            signing_algo    TEXT,
+            created_at      TEXT NOT NULL,
+            delivered_at    TEXT,
+            delivery_method TEXT,
+            FOREIGN KEY (client_id) REFERENCES clients(id)
+        )
+    """)
+    old_cols = {row[1] for row in db.execute("PRAGMA table_info(reports)")}
+    # Copy every column that exists in both old and new
+    new_cols = {"id", "client_id", "ticker", "business_name", "report_type",
+                "modules_included", "pdf_path", "docx_path", "signature_path",
+                "signing_algo", "created_at", "delivered_at", "delivery_method"}
+    transferable = sorted(old_cols & new_cols)
+    col_list = ", ".join(transferable)
+    db.execute(f"""
+        INSERT OR IGNORE INTO reports_new ({col_list})
+        SELECT {col_list} FROM reports
+    """)
+    db.execute("DROP TABLE reports")
+    db.execute("ALTER TABLE reports_new RENAME TO reports")
+    log.info("Migrated reports table: client_id nullable, ticker column added")
 
 
 def _add_column_if_missing(db, table: str, column: str, col_type: str) -> None:

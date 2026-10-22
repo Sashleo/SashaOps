@@ -3,7 +3,6 @@ routers/auth.py — Login, logout, and first-run setup routes.
 """
 
 import uuid
-import secrets
 from datetime import datetime
 from typing import Optional
 
@@ -16,7 +15,6 @@ import structlog
 from security.auth import (
     verify_totp, create_session, invalidate_session,
     check_lockout, record_failed_attempt, clear_attempts,
-    generate_totp_secret, get_totp_uri,
 )
 from security.crypto import hash_password, verify_password
 from database.connection import get_db
@@ -89,14 +87,12 @@ async def login_page(request: Request):
 
     if not admin:
         # First-run: show setup page
-        return templates.TemplateResponse("login.html", {
-            "request":  request,
+        return templates.TemplateResponse(request, "login.html", {
             "version":  settings.APP_VERSION,
             "first_run": True,
         })
 
-    return templates.TemplateResponse("login.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "login.html", {
         "version": settings.APP_VERSION,
     })
 
@@ -115,8 +111,7 @@ async def login_post(
     # Check lockout
     lockout = check_lockout(ip)
     if lockout:
-        return templates.TemplateResponse("login.html", {
-            "request":         request,
+        return templates.TemplateResponse(request, "login.html", {
             "version":         settings.APP_VERSION,
             "lockout_seconds": lockout,
         })
@@ -134,8 +129,7 @@ async def login_post(
             bootstrap_token == settings.ADMIN_BOOTSTRAP_TOKEN
         if not (is_local or token_ok):
             log.warning("Blocked first-run admin creation from non-local host", ip=ip)
-            return templates.TemplateResponse("login.html", {
-                "request": request,
+            return templates.TemplateResponse(request, "login.html", {
                 "version": settings.APP_VERSION,
                 "error":   "First-run admin creation must originate from localhost or "
                            "supply a valid ADMIN_BOOTSTRAP_TOKEN.",
@@ -143,8 +137,7 @@ async def login_post(
             }, status_code=403)
         pw_err = _password_policy_error(password)
         if pw_err:
-            return templates.TemplateResponse("login.html", {
-                "request": request,
+            return templates.TemplateResponse(request, "login.html", {
                 "version": settings.APP_VERSION,
                 "error":   pw_err,
                 "first_run": True,
@@ -155,8 +148,7 @@ async def login_post(
     # Verify credentials
     if username != "admin" or not verify_password(password, admin["password_hash"]):
         locked = record_failed_attempt(ip)
-        return templates.TemplateResponse("login.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "login.html", {
             "version": settings.APP_VERSION,
             "error":   "Invalid username or password." + (" Account locked." if locked else ""),
         })
@@ -164,15 +156,13 @@ async def login_post(
     # Verify TOTP if enabled
     if admin["totp_enabled"] and admin["totp_secret"]:
         if not totp_code:
-            return templates.TemplateResponse("login.html", {
-                "request":       request,
+            return templates.TemplateResponse(request, "login.html", {
                 "version":       settings.APP_VERSION,
                 "totp_required": True,
             })
         if not verify_totp(admin["totp_secret"], totp_code):
             record_failed_attempt(ip)
-            return templates.TemplateResponse("login.html", {
-                "request":       request,
+            return templates.TemplateResponse(request, "login.html", {
                 "version":       settings.APP_VERSION,
                 "error":         "Invalid 2FA code.",
                 "totp_required": True,

@@ -63,4 +63,12 @@ print("  OK: tv_share_pct absent from both DCF templates")
 PY
 
 echo ""
+echo "==> ruff (F401 unused import, F841 unused var, F811 redefinition, ERA001 commented code)"
+python3 -m ruff check --select F401,F841,F811,ERA001 .
+
+echo ""
+echo "==> vulture (dead code, min confidence 80)"
+python3 -m vulture . vulture_whitelist.py --min-confidence 80 --exclude ".cache,data,__pycache__"
+
+echo ""
 echo "All checks passed."

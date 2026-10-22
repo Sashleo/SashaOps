@@ -3,7 +3,7 @@ routers/private.py — Private Analyser: manual entry of financials for
 non-listed companies. Uses the same metrics engine as the PSX Analyser.
 """
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -101,8 +101,7 @@ async def page(request: Request):
     # Suggest Pakistan-calibrated DCF defaults when the form is blank (fresh or unset fields)
     _fill_private_dcf_defaults(prefill)
 
-    return templates.TemplateResponse("private.html", {
-        "request":         request,
+    return templates.TemplateResponse(request, "private.html", {
         "active_page":     "private",
         "mode":            "private",
         "prefill":         prefill,
@@ -142,8 +141,7 @@ async def entries_list(request: Request):
     if active_client:
         from database.private_entries import list_entries
         entries = list_entries(active_client["id"])
-    return templates.TemplateResponse("private_entries.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "private_entries.html", {
         "entries": entries,
         "active_client": active_client,
     })
@@ -162,8 +160,7 @@ async def load(request: Request, entry_id: str):
     if sidebar.get("active_client"):
         from database.private_entries import list_entries
         entries = list_entries(sidebar["active_client"]["id"])
-    return templates.TemplateResponse("private.html", {
-        "request":         request,
+    return templates.TemplateResponse(request, "private.html", {
         "active_page":     "private",
         "mode":            "private",
         "prefill":         prefill,
@@ -187,8 +184,7 @@ async def delete_entry_route(request: Request, entry_id: str):
     from database.private_entries import delete_entry, list_entries
     delete_entry(entry_id)
     entries = list_entries(active_client["id"]) if active_client else []
-    return templates.TemplateResponse("private_entries.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "private_entries.html", {
         "entries": entries,
         "active_client": active_client,
     })
@@ -207,8 +203,7 @@ async def rename_entry_route(request: Request, entry_id: str):
         rename_entry(entry_id, new_name)
     from database.private_entries import list_entries
     entries = list_entries(active_client["id"]) if active_client else []
-    return templates.TemplateResponse("private_entries.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "private_entries.html", {
         "entries": entries,
         "active_client": active_client,
     })
@@ -324,8 +319,7 @@ async def analyse(request: Request):
     if sb.get("active_client"):
         from database.private_entries import list_entries
         entries = list_entries(sb["active_client"]["id"])
-    return templates.TemplateResponse("private.html", {
-        "request":         request,
+    return templates.TemplateResponse(request, "private.html", {
         "active_page":     "private",
         "mode":            "private",
         "prefill":         form,

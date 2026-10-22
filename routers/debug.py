@@ -33,11 +33,9 @@ async def test_scrapers(request: Request):
         )
 
     import asyncio
-    from database.connection import get_db
 
     def _run_all():
         from intelligence.gov_scrapers import get_scrapers_for_run
-        db = get_db()
         rows = []
         scrapers = get_scrapers_for_run("general", include_ministries=True)
         for sc in scrapers:

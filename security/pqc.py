@@ -17,9 +17,8 @@ liboqs must be built and installed — handled in Dockerfile.
 """
 
 import os
-import json
 import hashlib
-from typing import Tuple, Optional, Dict
+from typing import Tuple, Dict
 from dataclasses import dataclass
 
 import structlog

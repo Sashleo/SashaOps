@@ -3,7 +3,7 @@ routers/settings.py — Security and account settings routes.
 """
 
 from fastapi import APIRouter, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 import structlog
@@ -77,8 +77,10 @@ async def settings_page(request: Request):
     totp_enabled = bool(session and session.get("totp_enabled")) if session else False
     sec = _security_status()
 
-    return templates.TemplateResponse("settings.html", {
-        "request":          request,
+    from security.audit import verify_chain_detailed
+    chain = verify_chain_detailed(get_db())
+
+    return templates.TemplateResponse(request, "settings.html", {
         "active_page":      "settings",
         "db_encrypted":     sec["sqlcipher"],
         "pqc_available":    sec["pqc_available"],
@@ -89,6 +91,8 @@ async def settings_page(request: Request):
         "db_path":          settings.DATABASE_PATH,
         "totp_enabled":     totp_enabled,
         "clients":          list_clients(),
+        "chain":            chain,
+        "r":                chain,
         **sidebar,
     })
 
@@ -99,9 +103,7 @@ async def verify_audit(request: Request):
     db = get_db()
     from security.audit import verify_chain_detailed
     r = verify_chain_detailed(db)
-    return templates.TemplateResponse("partials/audit_report.html", {
-        "request": request, "r": r,
-    })
+    return templates.TemplateResponse(request, "partials/audit_report.html", {"r": r})
 
 
 @router.post("/change-password", response_class=HTMLResponse)
@@ -255,8 +257,7 @@ async def disable_totp(
 
 def _clients_partial(request: Request) -> HTMLResponse:
     clients = list_clients()
-    return templates.TemplateResponse("partials/settings_clients.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "partials/settings_clients.html", {
         "clients": clients,
     })
 
@@ -332,9 +333,8 @@ _DCF_ALLOWED_KEYS = frozenset({
 
 def _dcf_rates_partial(request: Request) -> HTMLResponse:
     from intelligence.dcf_rates import get_all_rates_display
-    return templates.TemplateResponse("partials/dcf_rates.html", {
-        "request": request,
-        "rates":   get_all_rates_display(),
+    return templates.TemplateResponse(request, "partials/dcf_rates.html", {
+        "rates": get_all_rates_display(),
     })
 
 

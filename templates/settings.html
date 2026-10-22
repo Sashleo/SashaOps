@@ -121,13 +121,9 @@
   <div style="font-size:0.85em; color:var(--text-muted); margin-bottom:12px">
     The audit log is hash-chained. Verify that no entries have been tampered with or deleted.
   </div>
-  <button class="btn"
-          hx-post="/settings/verify-audit"
-          hx-target="#audit-result"
-          hx-swap="innerHTML">
-    Verify Audit Chain
-  </button>
-  <div id="audit-result" style="margin-top:12px"></div>
+  <div id="audit-result" style="margin-top:12px">
+    {% include "partials/audit_report.html" with context %}
+  </div>
 </div>
 
 <!-- Change password -->

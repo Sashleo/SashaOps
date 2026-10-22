@@ -51,11 +51,10 @@ _make_pqc_stub()
 
 def _make_signer_db():
     """Return a mock DB that has one active signing key."""
-    import hmac, hashlib
     _KEY = b"test-signing-key-32-bytes-padded"
 
     # Simulate encrypt/decrypt as identity for this test
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import patch
     from reports.signer import sign_report, verify_report
 
     # Patch encrypt/decrypt to be identity transforms
@@ -68,7 +67,6 @@ def _make_signer_db():
 
 def test_sign_then_verify_roundtrip():
     """Signed document must verify successfully."""
-    import hmac, hashlib
     from reports.signer import sign_report, verify_report
 
     _KEY = b"test-signing-key-32-bytes-padded"
@@ -105,7 +103,6 @@ def test_sign_then_verify_roundtrip():
 
 def test_tampered_document_fails_verification():
     """Tampered bytes must not verify."""
-    import hmac, hashlib
     from reports.signer import sign_report, verify_report
 
     _KEY = b"test-signing-key-32-bytes-padded"
@@ -154,7 +151,6 @@ def test_download_refuses_on_invalid_signature(monkeypatch):
     app.include_router(rr.router, prefix="/reports")
 
     # Fake session so require_session passes
-    from security.auth import require_session
 
     def _fake_session(request):
         pass
@@ -162,7 +158,7 @@ def test_download_refuses_on_invalid_signature(monkeypatch):
     monkeypatch.setattr(rr, "require_session", _fake_session)
 
     # Active client
-    monkeypatch.setattr(rr, "_sidebar", lambda req: {
+    monkeypatch.setattr(rr, "_sidebar", lambda _req: {
         "clients": [{"id": "c1", "name": "Test"}],
         "active_client": {"id": "c1", "name": "Test"},
     })

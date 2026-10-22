@@ -8,7 +8,6 @@ The master password unlocks the database on every startup.
 
 import os
 from contextlib import contextmanager
-from typing import Optional
 import structlog
 
 from config.settings import settings

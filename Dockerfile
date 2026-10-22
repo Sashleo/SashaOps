@@ -69,11 +69,6 @@ RUN playwright install-deps chromium || true \
         fonts-freefont-ttf \
     && playwright install chromium
 
-# ── Download spaCy language model (local NLP — no API calls) ─────────────────
-# Direct wheel avoids the spacy download command's version-detection URL issue.
-RUN pip install --no-cache-dir \
-    https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
-
 # ── Copy application ──────────────────────────────────────────────────────────
 COPY . .
 

@@ -5,16 +5,14 @@ Each client has a unique per-client salt for key derivation.
 Destroying the salt makes the client's data irrecoverable.
 """
 
-import json
 import uuid
-import secrets
 from datetime import datetime
 from typing import Optional, List
 
 import structlog
 
 from database.connection import get_db
-from security.crypto import generate_salt, encrypt, decrypt
+from security.crypto import generate_salt, encrypt
 
 log = structlog.get_logger()
 

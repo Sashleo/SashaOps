@@ -53,9 +53,6 @@ pdf2image==1.17.0
 # opencv (headless: no libGL) for the preprocessed-OCR extractor stage
 opencv-python-headless==4.10.0.84
 
-# ── NLP (entity extraction in gov scrapers, optional) ─────────────────────────
-spacy==3.7.4
-
 # ── Chart rendering for exported reports ──────────────────────────────────────
 matplotlib==3.9.2
 

@@ -7,7 +7,6 @@ so it could never have worked. These tests lock in the real source: the
 "MONTH WISE / TAX WISE NET COLLECTION DURING FY <year>" PDF table.
 """
 
-import re
 
 from intelligence.gov_scrapers.fbr_revenue import _MONTH_ROW, _TOTAL_ROW, _FY_TITLE, _last_number
 

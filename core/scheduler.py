@@ -213,10 +213,10 @@ def _gov_scraper_job(module: str, cls_name: str) -> Callable[[], None]:
 
 def build_jobs() -> list[Job]:
     return [
-        # PSX (market-hours-aware)
-        # PSXMarketScraper.scraper_id == "psx_market"; the scheduler uses distinct
-        # job IDs so each cadence slot shows independently on the Data Health card.
-        # Wrap in _run_plain so the correct job_id is written to scrape_log.
+        # PSX (market-hours-aware)  # noqa: ERA001
+        # PSXMarketScraper.scraper_id == "psx_market"; the scheduler uses distinct  # noqa: ERA001
+        # job IDs so each cadence slot shows independently on the Data Health card.  # noqa: ERA001
+        # Wrap in _run_plain so the correct job_id is written to scrape_log.  # noqa: ERA001
         Job("psx_prices_intraday", "PSX prices (intraday)",
            lambda: _run_plain("psx_prices_intraday", _psx_prices_job),
            "every 15 min, market hours",

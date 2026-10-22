@@ -8,7 +8,7 @@ Every scraper:
 - Logs its run to the scraper_runs table
 """
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 import structlog

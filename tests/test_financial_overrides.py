@@ -7,7 +7,7 @@ Tests that must fail before the fix and pass after:
 3. Without overrides, balance sheet fields stay None.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 _TICKER = "TESTCO"
 _PERIOD = "2024"
@@ -54,7 +54,6 @@ def _make_db(with_overrides: bool):
 def _stub_analysis_no_bs(a):
     """Fill income statement for _PERIOD, leave balance sheet empty — simulates
     a ticker that PSX HTML gives revenue/profit for but no balance sheet."""
-    import intelligence.psx_analyser as pa
     PKR_T = 1_000  # PKR_THOUSANDS constant
 
     a.found = True

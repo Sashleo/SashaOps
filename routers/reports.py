@@ -8,13 +8,13 @@ Security requirements (non-negotiable):
 """
 
 from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import HTMLResponse, Response, RedirectResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
 import structlog
 
 from security.auth import require_session
-from database.clients import list_clients, get_client_salt
+from database.clients import list_clients
 from database.connection import get_db
 from reports.builder import list_reports, get_report, read_report_file
 from reports.signer import verify_report
@@ -102,8 +102,7 @@ async def reports_page(request: Request):
     except Exception:
         pass
 
-    return templates.TemplateResponse("reports.html", {
-        "request":      request,
+    return templates.TemplateResponse(request, "reports.html", {
         "active_page":  "reports",
         "reports":      reports,
         "total_all":    total_all,

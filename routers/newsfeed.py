@@ -1,8 +1,8 @@
 """
 routers/newsfeed.py — Newsfeed page showing RSS headlines from Pakistani sources.
 
-Headlines are fetched from the feed cache (background-refreshed every 15 min)
-and classified using keyword heuristics. No AI, no external API calls.
+Headlines are fetched from the feed cache (background-refreshed every 15 min).
+Filtered by source tab; sorted newest-first. No AI, no external API calls.
 """
 
 from fastapi import APIRouter, Request
@@ -71,8 +71,7 @@ def _load_headlines(source: str = "") -> dict:
 async def page(request: Request, source: str = ""):
     require_session(request)
     data = _load_headlines(source)
-    return templates.TemplateResponse("newsfeed.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "newsfeed.html", {
         "active_page": "newsfeed",
         **data,
         **_sidebar(request),

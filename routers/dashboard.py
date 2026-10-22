@@ -2,7 +2,6 @@
 routers/dashboard.py — Command centre / dashboard routes.
 """
 
-from datetime import datetime
 
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -41,8 +40,7 @@ async def dashboard(request: Request):
     require_session(request)
     from core.data_health import get_sanity_violations
     sidebar = _get_sidebar_data(request)
-    return templates.TemplateResponse("dashboard.html", {
-        "request":     request,
+    return templates.TemplateResponse(request, "dashboard.html", {
         "active_page": "dashboard",
         "data_health": _data_health(),
         "violations":  get_sanity_violations(),
@@ -56,8 +54,7 @@ async def data_health_partial(request: Request):
     in flight so rows update live without a full page reload."""
     require_session(request)
     from core.data_health import any_running, get_sanity_violations
-    return templates.TemplateResponse("partials/data_health.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "partials/data_health.html", {
         "data_health": _data_health(),
         "violations": get_sanity_violations(),
         "any_running": any_running(),
@@ -74,8 +71,7 @@ async def data_health_refresh(request: Request, job_id: str = Form("")):
         trigger_refresh(job_id)
     else:
         trigger_refresh_all()
-    return templates.TemplateResponse("partials/data_health.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "partials/data_health.html", {
         "data_health": _data_health(),
         "violations": get_sanity_violations(),
         "any_running": any_running(),

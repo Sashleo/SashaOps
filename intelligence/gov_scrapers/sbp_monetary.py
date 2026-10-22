@@ -11,7 +11,7 @@ band so a stray number near a policy-rate keyword can't be stored as the rate.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 import structlog

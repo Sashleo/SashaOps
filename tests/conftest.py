@@ -5,7 +5,7 @@ Patches the database connection before any test module imports it,
 so tests can run outside Docker without pysqlcipher3.
 """
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 # --- Patch pysqlcipher3 before anything imports it ---
 mock_sqlcipher = MagicMock()
