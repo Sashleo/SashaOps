@@ -26,7 +26,7 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import RedirectResponse
 
-from security.crypto import hash_password, verify_password, secure_compare, encrypt, decrypt
+from security.crypto import hash_password, verify_password, encrypt, decrypt
 from config.settings import settings
 
 log = structlog.get_logger()
@@ -289,7 +289,7 @@ def generate_totp_secret() -> str:
     return pyotp.random_base32()
 
 
-def get_totp_uri(secret: str, app_name: str = "SashaOps") -> str:
+def get_totp_uri(secret: str) -> str:
     """Get the TOTP URI for QR code generation."""
     return pyotp.totp.TOTP(secret).provisioning_uri(
         name="admin",

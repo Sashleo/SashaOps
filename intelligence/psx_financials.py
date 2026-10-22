@@ -606,5 +606,9 @@ def bulk_refresh_psx_financials() -> int:
         except Exception as e:
             log.info("Bulk PSX financials refresh skipped ticker",
                      ticker=ticker, error=str(e)[:100])
+        # fetch_psx_company already sleeps ~1.5–2s; this extra pause keeps the
+        # bulk job well under PSX's rate-limit across the full 500+ ticker list.
+        import time
+        time.sleep(1)
     log.info("Bulk PSX financials refresh complete", tickers=len(tickers), succeeded=done)
     return done

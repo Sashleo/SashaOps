@@ -9,9 +9,8 @@ the fast pdfplumber path for digital PDFs.
     extract(pdf_bytes) -> {"financials": {...}, "method": str, "confidence": 0-1}
                           (empty financials on failure)
 
-All parsing reuses psx_report_parser._parse_financials + _LABELS so label coverage
-stays in one place. OCR is CPU-blocking; callers already run this inside an executor
-(stage1/stage2/markets), so no async is added here.
+All parsing calls parse_financials_accurate() from statement_parser. OCR is CPU-blocking;
+callers already run this inside an executor, so no async is added here.
 """
 
 from __future__ import annotations
@@ -23,7 +22,7 @@ import re
 import structlog
 
 from intelligence.psx_report_parser import (
-    _parse_financials, MAX_PAGES, OCR_MAX_PAGES, OCR_DPI,
+    MAX_PAGES, OCR_MAX_PAGES, OCR_DPI,
 )
 from intelligence.statement_parser import parse_financials_accurate, quality_score
 

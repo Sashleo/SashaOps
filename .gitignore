@@ -13,3 +13,4 @@ reports/generated/
 credentials.json
 token.json
 .cache/
+golden/

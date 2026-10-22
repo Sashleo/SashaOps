@@ -126,7 +126,7 @@ class BaseExchangeScraper(BaseScraper):
                 continue
             # base_per_quote = how many base units per 1 quote unit
             rate = round(base_in_usd / quote_in_usd, 6)
-            ok = self._upsert_forex_rate(db, region, bank, rate_date, base_currency, quote, "mid", rate, ERAPI_URL)
+            ok = self._upsert_forex_rate(db, region, bank, rate_date, base_currency, quote, rate, ERAPI_URL)
             if ok:
                 inserted += 1
             else:
@@ -135,7 +135,7 @@ class BaseExchangeScraper(BaseScraper):
         return inserted, skipped, ""
 
     def _upsert_forex_rate(self, db, region_id: str, central_bank: str, rate_date: str,
-                           base: str, quote: str, rate_type: str, rate: float,
+                           base: str, quote: str, rate: float,
                            source_url: Optional[str] = None) -> bool:
         """
         Insert a PKR forex rate into pkr_forex. Pakistan-only: base is always PKR,

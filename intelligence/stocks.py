@@ -121,9 +121,9 @@ def fetch_stock_data(ticker: str) -> Tuple[Optional[StockData], Optional[str]]:
 
     ticker = ticker.upper().strip()
 
-    price_row    = get_latest_company_price(None, ticker)
-    company_row  = search_company(None, ticker) or {}
-    history      = get_company_price_history(None, ticker, days=260)
+    price_row    = get_latest_company_price(ticker)
+    company_row  = search_company(ticker) or {}
+    history      = get_company_price_history(ticker, days=260)
     closes       = [r["close_price"] for r in history if r.get("close_price")]
 
     if not price_row and not company_row:

@@ -2,18 +2,16 @@
 database/watchlist.py — Personal PSX watchlist CRUD.
 
 Not client-specific — shared personal list for the app owner.
-Pakistan-only: keyed by PSX symbol. The exchange_id parameter is accepted for
-call-site compatibility but ignored (always PSX).
+Pakistan-only: keyed by PSX symbol.
 """
 
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List
 
 from database.connection import get_db
 
 
-def add_to_watchlist(exchange_id: Optional[str], ticker: str,
-                     company_name: str = "", notes: str = "") -> bool:
+def add_to_watchlist(ticker: str, company_name: str = "", notes: str = "") -> bool:
     """Add a PSX symbol to the watchlist. Returns True if inserted."""
     db = get_db()
     try:
@@ -29,7 +27,7 @@ def add_to_watchlist(exchange_id: Optional[str], ticker: str,
         return False
 
 
-def remove_from_watchlist(exchange_id: Optional[str], ticker: str) -> bool:
+def remove_from_watchlist(ticker: str) -> bool:
     """Remove a symbol from the watchlist. Returns True if a row was deleted."""
     db = get_db()
     cursor = db.execute(
@@ -50,12 +48,11 @@ def get_watchlist() -> List[dict]:
     for r in rows:
         d = dict(r)
         d["ticker"] = d.get("symbol")
-        d["exchange_id"] = "KAR"
         out.append(d)
     return out
 
 
-def is_watched(exchange_id: Optional[str], ticker: str) -> bool:
+def is_watched(ticker: str) -> bool:
     """Return True if a symbol is already on the watchlist."""
     db = get_db()
     row = db.execute(
@@ -65,7 +62,7 @@ def is_watched(exchange_id: Optional[str], ticker: str) -> bool:
     return row is not None
 
 
-def update_watchlist_notes(exchange_id: Optional[str], ticker: str, notes: str) -> bool:
+def update_watchlist_notes(ticker: str, notes: str) -> bool:
     """Update the personal notes for a watchlist entry."""
     db = get_db()
     cursor = db.execute(

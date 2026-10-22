@@ -203,7 +203,7 @@ def get_period_summary(region_id: Optional[str], from_date: str, to_date: str) -
 
 # ── PSX Companies ─────────────────────────────────────────────────────────────
 
-def search_company(exchange_id: Optional[str], name: str) -> Optional[dict]:
+def search_company(name: str) -> Optional[dict]:
     """Find a PSX-listed company by partial name match."""
     db = get_db()
     row = db.execute(
@@ -220,7 +220,7 @@ def search_company(exchange_id: Optional[str], name: str) -> Optional[dict]:
     return d
 
 
-def get_exchange_companies(exchange_id: Optional[str], sector: Optional[str] = None,
+def get_exchange_companies(sector: Optional[str] = None,
                            limit: int = 50) -> List[dict]:
     """Return PSX-listed companies, optionally filtered by sector."""
     db = get_db()
@@ -247,7 +247,7 @@ def get_exchange_companies(exchange_id: Optional[str], sector: Optional[str] = N
     return out
 
 
-def get_company_price_history(exchange_id: Optional[str], ticker: str, days: int = 30) -> List[dict]:
+def get_company_price_history(ticker: str, days: int = 30) -> List[dict]:
     """Return daily price history for a PSX company."""
     db = get_db()
     cutoff = (date.today() - timedelta(days=days)).isoformat()
@@ -261,7 +261,7 @@ def get_company_price_history(exchange_id: Optional[str], ticker: str, days: int
     return [dict(r) for r in rows]
 
 
-def get_latest_company_price(exchange_id: Optional[str], ticker: str) -> Optional[dict]:
+def get_latest_company_price(ticker: str) -> Optional[dict]:
     """Return most recent price for a PSX symbol."""
     db = get_db()
     row = db.execute(
@@ -278,7 +278,7 @@ def get_latest_company_price(exchange_id: Optional[str], ticker: str) -> Optiona
     return d
 
 
-def get_top_movers(exchange_id: Optional[str], trade_date: str = "", limit: int = 10) -> dict:
+def get_top_movers(trade_date: str = "", limit: int = 10) -> dict:
     """Return top gainers and losers from psx_prices for the most recent date."""
     db = get_db()
     if not trade_date:
@@ -305,7 +305,7 @@ def get_top_movers(exchange_id: Optional[str], trade_date: str = "", limit: int 
     return {"gainers": gainers, "losers": losers, "trade_date": trade_date}
 
 
-def get_sector_breakdown(exchange_id: Optional[str] = None) -> List[dict]:
+def get_sector_breakdown() -> List[dict]:
     """Per-sector summary: avg change_pct and company count from latest PSX prices."""
     db = get_db()
     rows = db.execute(

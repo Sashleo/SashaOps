@@ -355,7 +355,8 @@ def _download_by_url(url: str) -> Optional[bytes]:
         except Exception:
             pass
     try:
-        import requests
+        import time, random, requests
+        time.sleep(2 + random.uniform(0, 1))   # don't hammer PSX PDF server
         r = requests.get(url, headers=HEADERS, timeout=DOWNLOAD_TIMEOUT, verify=True)
         if r.status_code == 200 and r.content[:4] == b"%PDF":
             CACHE_DIR.mkdir(parents=True, exist_ok=True)

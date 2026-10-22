@@ -29,7 +29,7 @@ def _sidebar(request: Request) -> dict:
 
 def _load_headlines(source: str = "") -> dict:
     from core.feed_cache import get_cached_feeds, cache_status
-    from intelligence.feeds import classify_headlines, get_feeds
+    from intelligence.feeds import get_feeds
 
     feeds = get_feeds()
     sources = [{"id": f.id, "label": f.label} for f in feeds]
@@ -38,7 +38,6 @@ def _load_headlines(source: str = "") -> dict:
     items = []
     if cached:
         items = list(cached.items)
-        classify_headlines(items, "", "pakistan")
 
     if source:
         items = [i for i in items if i.feed_id == source]

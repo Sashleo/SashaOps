@@ -16,7 +16,7 @@ import structlog
 from security.auth import (
     verify_totp, create_session, invalidate_session,
     check_lockout, record_failed_attempt, clear_attempts,
-    generate_totp_secret, generate_totp_qr_base64, get_totp_uri,
+    generate_totp_secret, get_totp_uri,
 )
 from security.crypto import hash_password, verify_password
 from database.connection import get_db

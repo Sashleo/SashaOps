@@ -9,7 +9,6 @@ from fastapi.templating import Jinja2Templates
 import structlog
 
 from security.auth import require_session, get_session
-from security.audit import verify_chain
 from database.clients import list_clients, create_client, update_client, delete_client, purge_client
 from database.connection import get_db
 from config.settings import settings
