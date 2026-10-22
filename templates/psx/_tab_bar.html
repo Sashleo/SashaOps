@@ -1,0 +1,15 @@
+{# Tab bar partial — used by full-page render and OOB tab-panel updates.
+   Requires: a (PSXAnalysis), tabs, tab_labels, active_tab. #}
+<nav id="tab-bar" class="tab-bar">
+  {% for t in tabs %}
+  <a href="/psx/{{ a.ticker }}?tab={{ t }}"
+     class="tab-link{% if active_tab == t %} active{% endif %}"
+     {% if active_tab == t %}aria-current="page"{% endif %}
+     hx-get="/psx/{{ a.ticker }}/tab/{{ t }}"
+     hx-target="#panel"
+     hx-push-url="/psx/{{ a.ticker }}?tab={{ t }}"
+     hx-swap="innerHTML">
+    {{ tab_labels[t] }}
+  </a>
+  {% endfor %}
+</nav>

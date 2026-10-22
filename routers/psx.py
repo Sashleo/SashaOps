@@ -23,6 +23,28 @@ log = structlog.get_logger()
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
+# ── build_analysis cache ───────────────────────────────────────────────────────
+# Keyed by ticker; invalidated on save-overrides, clear-overrides, refresh-profile.
+# TTL is a safety net so a stale entry never survives more than 5 minutes.
+import time as _time
+_ANALYSIS_CACHE: dict = {}
+_CACHE_TTL = 300
+
+
+def _cached_build(ticker: str):
+    """Return a cached PSXAnalysis, or call build_analysis() and cache the result."""
+    from intelligence.psx_analyser import build_analysis
+    entry = _ANALYSIS_CACHE.get(ticker)
+    if entry and _time.monotonic() - entry[0] < _CACHE_TTL:
+        return entry[1]
+    a = build_analysis(ticker)
+    _ANALYSIS_CACHE[ticker] = (_time.monotonic(), a)
+    return a
+
+
+def _invalidate(ticker: str) -> None:
+    _ANALYSIS_CACHE.pop(ticker, None)
+
 # Section number -> (title, template, one-line data-source note). Only the sections
 # that have a data path today are registered; the rest are declared as pending so
 # the page states what is coming rather than rendering an empty card.
@@ -190,12 +212,10 @@ TAB_LABELS = {
 
 
 @router.get("/{ticker}", response_class=HTMLResponse)
-async def analysis(request: Request, ticker: str, tab: str = "overview",
-                   view: str = ""):
+async def analysis(request: Request, ticker: str, tab: str = "overview"):
     require_session(request)
-    from intelligence.psx_analyser import build_analysis
     tk = (ticker or "").strip().upper()
-    a = build_analysis(tk)
+    a = _cached_build(tk)
 
     active_tab = tab if tab in TABS else "overview"
 
@@ -229,6 +249,7 @@ async def analysis(request: Request, ticker: str, tab: str = "overview",
         "prefill": prefill,
         "sectors": [],
         "ticker": tk,
+        "entry_period": a.latest_period or "",
         **_sidebar(request),
     })
 
@@ -238,12 +259,15 @@ async def tab_panel(request: Request, ticker: str, tab_name: str):
     require_session(request)
     if tab_name not in TABS:
         return HTMLResponse("")
-    from intelligence.psx_analyser import build_analysis
     tk = (ticker or "").strip().upper()
-    a = build_analysis(tk)
+    t0 = _time.monotonic()
+    a = _cached_build(tk)
+    build_ms = int((_time.monotonic() - t0) * 1000)
+    log.debug("tab panel", ticker=tk, tab=tab_name, build_ms=build_ms)
 
     ctx = {
         "request": request, "a": a, "active_tab": tab_name,
+        "tabs": TABS, "tab_labels": TAB_LABELS,
         "sections": SECTIONS, "pending_sections": PENDING_SECTIONS,
     }
     if tab_name == "entry":
@@ -261,9 +285,10 @@ async def tab_panel(request: Request, ticker: str, tab_name: str):
         if a.current_price:
             prefill["current_price"] = a.current_price
         _fill_dcf_defaults(prefill, a.is_bank)
-        ctx.update(mode="psx", prefill=prefill, sectors=[], ticker=tk)
+        ctx.update(mode="psx", prefill=prefill, sectors=[], ticker=tk,
+                   entry_period=a.latest_period or "")
 
-    return templates.TemplateResponse(f"psx/tab_{tab_name}.html", ctx)
+    return templates.TemplateResponse("psx/_tab_panel_response.html", ctx)
 
 
 def is_refreshing(ticker: str) -> bool:
@@ -422,6 +447,68 @@ async def run_dcf(request: Request, ticker: str):
     })
 
 
+_OVERRIDE_FIELDS = (
+    "revenue", "gross_profit", "ebitda", "ebit", "net_income", "interest_expense",
+    "depreciation", "total_assets", "total_equity", "total_debt", "cash",
+    "current_assets", "current_liabilities", "retained_earnings", "inventory",
+    "receivables", "payables", "ocf", "capex",
+)
+
+
+@router.post("/{ticker}/save-overrides", response_class=HTMLResponse)
+async def save_overrides(request: Request, ticker: str):
+    """Save the entry form values to financial_overrides for this ticker."""
+    require_session(request)
+    from datetime import datetime as _dt
+
+    tk = (ticker or "").strip().upper()
+    form = dict(await request.form())
+    period = (form.get("period") or "").strip()
+    if not period:
+        return HTMLResponse("<span style='color:var(--neg);font-size:0.85em'>No period — reload the page.</span>")
+
+    db = get_db()
+    now = _dt.utcnow().isoformat()
+    saved = 0
+    for field_name in _OVERRIDE_FIELDS:
+        raw = form.get(field_name, "")
+        if raw == "":
+            continue
+        try:
+            val = float(raw)
+        except (TypeError, ValueError):
+            continue
+        db.execute(
+            """INSERT INTO financial_overrides (ticker, period, field, value_pkr_t, edited_at)
+               VALUES (?,?,?,?,?)
+               ON CONFLICT(ticker, period, field) DO UPDATE SET value_pkr_t=excluded.value_pkr_t,
+                   edited_at=excluded.edited_at""",
+            (tk, period, field_name, val, now),
+        )
+        saved += 1
+    db.commit()
+    _invalidate(tk)
+    log.info("Financial overrides saved", ticker=tk, period=period, fields=saved)
+    return HTMLResponse(
+        f"<span style='color:var(--pos);font-size:0.85em'>Saved {saved} field(s) for {tk} {period}.</span>"
+    )
+
+
+@router.post("/{ticker}/clear-overrides", response_class=HTMLResponse)
+async def clear_overrides(request: Request, ticker: str):
+    """Delete all owner-entered overrides for this ticker."""
+    require_session(request)
+    tk = (ticker or "").strip().upper()
+    db = get_db()
+    db.execute("DELETE FROM financial_overrides WHERE ticker = ?", (tk,))
+    db.commit()
+    _invalidate(tk)
+    log.info("Financial overrides cleared", ticker=tk)
+    return HTMLResponse(
+        f"<span style='color:var(--text-muted);font-size:0.85em'>Overrides cleared for {tk}.</span>"
+    )
+
+
 @router.post("/{ticker}/analyse-entry", response_class=HTMLResponse)
 async def analyse_entry(request: Request, ticker: str):
     """Run the full metrics suite with user-supplied form overrides over scanner data.
@@ -526,6 +613,7 @@ async def refresh_profile(request: Request, ticker: str):
         result = PSXCompanyProfileScraper().per_target(tk)
         ok = result.status.value in ("success", "partial")
         if ok:
+            _invalidate(tk)
             return HTMLResponse(
                 f"<span style='color:var(--pos);font-size:0.82em'>"
                 f"Profile refreshed — {result.rows_inserted} rows updated. "
@@ -543,21 +631,79 @@ async def refresh_profile(request: Request, ticker: str):
 
 @router.get("/{ticker}/export")
 async def export(request: Request, ticker: str, fmt: str = "pdf"):
-    """Task 3.9: the twelve-section report, charts embedded as static PNG."""
+    """Task 3.9: the twelve-section report, signed with ML-DSA."""
     require_session(request)
+    import os
+    import uuid
+    from datetime import datetime as _dt
     from fastapi.responses import Response
     from reports.psx_report import build_psx_report_pdf
+    from reports.signer import ensure_signing_key, sign_report
+    from security.crypto import derive_master_key, encrypt_bytes
+    from config.settings import settings
 
     tk = (ticker or "").strip().upper()
     pdf_bytes, err = build_psx_report_pdf(tk)
     if err or not pdf_bytes:
-        # Say why, rather than returning a broken download.
         return HTMLResponse(
             f"<div class='card'>Report could not be generated for {tk}: "
             f"{err or 'no output'}.</div>", status_code=500)
+
+    sig_header = "unsigned"
+    try:
+        db = get_db()
+        row = db.execute("SELECT master_salt FROM users LIMIT 1").fetchone()
+        if row and row["master_salt"]:
+            master_key = derive_master_key(settings.DB_MASTER_PASSWORD, bytes(row["master_salt"]))
+            ensure_signing_key(master_key)
+            sig_bytes, sig_err = sign_report(pdf_bytes, master_key)
+            if sig_err:
+                log.warning("PSX report signing failed", ticker=tk, error=sig_err)
+            else:
+                sig_header = "verified"
+                report_id = str(uuid.uuid4())
+                report_dir = "/app/data/reports"
+                os.makedirs(report_dir, exist_ok=True)
+                sig_path = os.path.join(report_dir, f"{tk}_{report_id[:8]}.sig")
+                with open(sig_path, "wb") as f:
+                    f.write(sig_bytes)
+
+                # Store in DB under active client if one is selected
+                session = getattr(request.state, "session", {}) or {}
+                client_id = session.get("client_id")
+                if client_id:
+                    from database.clients import get_client_salt
+                    from security.crypto import derive_master_key, derive_client_key
+                    client_salt = get_client_salt(client_id)
+                    if client_salt:
+                        client_key = derive_client_key(master_key, client_salt)
+                        enc_bytes = encrypt_bytes(pdf_bytes, client_key)
+                        pdf_path = os.path.join(report_dir, f"{tk}_{report_id[:8]}.pdf.enc")
+                        with open(pdf_path, "wb") as f:
+                            f.write(enc_bytes)
+                        algo_row = db.execute(
+                            "SELECT algorithm FROM pqc_keys WHERE key_type='signing' AND is_active=1 LIMIT 1"
+                        ).fetchone()
+                        db.execute(
+                            """INSERT OR IGNORE INTO reports
+                               (id, client_id, ticker, business_name, report_type,
+                                pdf_path, signature_path, signing_algo, created_at)
+                               VALUES (?,?,?,?,?,?,?,?,?)""",
+                            (report_id, client_id, tk, tk, "psx_export",
+                             pdf_path, sig_path,
+                             algo_row["algorithm"] if algo_row else None,
+                             _dt.utcnow().isoformat()),
+                        )
+                        db.commit()
+                        log.info("PSX report stored", ticker=tk, report_id=report_id)
+    except Exception as e:
+        log.warning("PSX report signing/storage failed", ticker=tk, error=str(e))
+
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
     return Response(
         content=pdf_bytes, media_type="application/pdf",
-        headers={"Content-Disposition":
-                f'attachment; filename="{tk}_analysis_{stamp}.pdf"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{tk}_analysis_{stamp}.pdf"',
+            "X-Report-Signature": sig_header,
+        },
     )

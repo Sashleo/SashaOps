@@ -83,19 +83,7 @@
 {% include "psx/_staleness.html" %}
 
 <!-- Tab bar -->
-<nav class="tab-bar">
-  {% for t in tabs %}
-  <a href="/psx/{{ a.ticker }}?tab={{ t }}"
-     class="tab-link{% if active_tab == t %} active{% endif %}"
-     {% if active_tab == t %}aria-current="page"{% endif %}
-     hx-get="/psx/{{ a.ticker }}/tab/{{ t }}"
-     hx-target="#panel"
-     hx-push-url="/psx/{{ a.ticker }}?tab={{ t }}"
-     hx-swap="innerHTML">
-    {{ tab_labels[t] }}
-  </a>
-  {% endfor %}
-</nav>
+{% include "psx/_tab_bar.html" %}
 
 <!-- Active panel -->
 <div id="panel">

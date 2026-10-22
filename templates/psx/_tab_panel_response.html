@@ -1,0 +1,19 @@
+{# Tab panel HTMX response: panel content + OOB tab bar update.
+   Rendered by tab_panel() for HTMX requests.
+   Requires: all context that the specific tab template needs, plus tabs, tab_labels, active_tab, a. #}
+{% include "psx/tab_" ~ active_tab ~ ".html" %}
+
+{# OOB: update the tab bar so the active underline follows the click. #}
+<nav id="tab-bar" class="tab-bar" hx-swap-oob="outerHTML:#tab-bar">
+  {% for t in tabs %}
+  <a href="/psx/{{ a.ticker }}?tab={{ t }}"
+     class="tab-link{% if active_tab == t %} active{% endif %}"
+     {% if active_tab == t %}aria-current="page"{% endif %}
+     hx-get="/psx/{{ a.ticker }}/tab/{{ t }}"
+     hx-target="#panel"
+     hx-push-url="/psx/{{ a.ticker }}?tab={{ t }}"
+     hx-swap="innerHTML">
+    {{ tab_labels[t] }}
+  </a>
+  {% endfor %}
+</nav>
