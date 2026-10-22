@@ -15,7 +15,7 @@ services:
       - sashaops_tmp:/app/.tmp
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-fk", "https://localhost:8000/health"]
+      test: ["CMD", "curl", "-fk", "https://localhost:8000/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
