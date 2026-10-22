@@ -86,6 +86,19 @@
       {% endif %}
     </div>
 
+    {# 8. Backup copy directory (only shown when BACKUP_COPY_DIR is set) #}
+    {% if backup_copy_dir %}
+    <div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px">
+      <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Backup copy dir</div>
+      {% if backup_copy_dir_ok %}
+      <div style="color:var(--pos);font-size:0.9rem">● Accessible</div>
+      {% else %}
+      <div style="color:var(--neg);font-size:0.9rem">● Directory not found</div>
+      {% endif %}
+      <div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;font-family:var(--font-mono)">{{ backup_copy_dir }}</div>
+    </div>
+    {% endif %}
+
   </div>
 </div>
 

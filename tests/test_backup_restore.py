@@ -23,7 +23,7 @@ def _make_db(path: str) -> None:
 
 
 def _mock_get_db(db_path: str):
-    """Return a real sqlite3 connection that answers PRAGMA wal_checkpoint."""
+    """Return a real sqlite3 connection that answers VACUUM INTO."""
     return sqlite3.connect(db_path)
 
 
@@ -38,7 +38,8 @@ def test_backup_creates_file_and_sha256_sidecar():
         conn = _mock_get_db(db_path)
         with patch("database.connection.get_db", return_value=conn), \
              patch("config.settings.settings") as ms:
-            ms.DATABASE_PATH = db_path
+            ms.DATABASE_PATH  = db_path
+            ms.BACKUP_COPY_DIR = ""
             from database.backup import backup_database
             dest = backup_database(db_path=db_path, backup_dir=backup_dir)
 
@@ -60,14 +61,16 @@ def test_restore_round_trip():
         conn = _mock_get_db(db_path)
         with patch("database.connection.get_db", return_value=conn), \
              patch("config.settings.settings") as ms:
-            ms.DATABASE_PATH = db_path
+            ms.DATABASE_PATH  = db_path
+            ms.BACKUP_COPY_DIR = ""
             from database.backup import backup_database
             backup = backup_database(db_path=db_path, backup_dir=backup_dir)
 
         # Corrupt the live DB
         Path(db_path).write_bytes(b"corrupted-data")
 
-        with patch("config.settings.settings") as ms:
+        with patch("config.settings.settings") as ms, \
+             patch("database.backup._verify_restored_db"):
             ms.DATABASE_PATH = db_path
             from database.backup import restore_database
             restore_database(str(backup), db_path=db_path)
@@ -89,7 +92,8 @@ def test_restore_rejects_corrupt_backup():
         conn = _mock_get_db(db_path)
         with patch("database.connection.get_db", return_value=conn), \
              patch("config.settings.settings") as ms:
-            ms.DATABASE_PATH = db_path
+            ms.DATABASE_PATH  = db_path
+            ms.BACKUP_COPY_DIR = ""
             from database.backup import backup_database
             backup = backup_database(db_path=db_path, backup_dir=backup_dir)
 
@@ -101,6 +105,60 @@ def test_restore_rejects_corrupt_backup():
             from database.backup import restore_database
             with pytest.raises(ValueError, match="SHA-256 mismatch"):
                 restore_database(str(backup), db_path=db_path)
+
+
+def test_restore_refuses_when_sha256_missing():
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path    = str(Path(tmp) / "sashaops.db")
+        backup_dir = str(Path(tmp) / "backups")
+        _make_db(db_path)
+        Path(backup_dir).mkdir()
+
+        conn = _mock_get_db(db_path)
+        with patch("database.connection.get_db", return_value=conn), \
+             patch("config.settings.settings") as ms:
+            ms.DATABASE_PATH  = db_path
+            ms.BACKUP_COPY_DIR = ""
+            from database.backup import backup_database
+            backup = backup_database(db_path=db_path, backup_dir=backup_dir)
+
+        # Delete the sidecar — restore must refuse
+        backup.with_suffix(".db.sha256").unlink()
+
+        with patch("config.settings.settings") as ms:
+            ms.DATABASE_PATH = db_path
+            from database.backup import restore_database
+            with pytest.raises(ValueError, match="sidecar not found"):
+                restore_database(str(backup), db_path=db_path)
+
+
+def test_restore_runs_integrity_check():
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path    = str(Path(tmp) / "sashaops.db")
+        backup_dir = str(Path(tmp) / "backups")
+        _make_db(db_path)
+        Path(backup_dir).mkdir()
+
+        conn = _mock_get_db(db_path)
+        with patch("database.connection.get_db", return_value=conn), \
+             patch("config.settings.settings") as ms:
+            ms.DATABASE_PATH  = db_path
+            ms.BACKUP_COPY_DIR = ""
+            from database.backup import backup_database
+            backup = backup_database(db_path=db_path, backup_dir=backup_dir)
+
+        # Verify _verify_restored_db is called with (db_path, password)
+        with patch("config.settings.settings") as ms, \
+             patch("database.backup._verify_restored_db") as mock_verify:
+            ms.DATABASE_PATH      = db_path
+            ms.DB_MASTER_PASSWORD = "testpw"
+            from database.backup import restore_database
+            restore_database(str(backup), db_path=db_path)
+        mock_verify.assert_called_once_with(db_path, "testpw")
+
+        # Direct test: _verify_restored_db passes for a healthy sqlite3 db
+        from database.backup import _verify_restored_db
+        _verify_restored_db(db_path, "ignored", _connect_fn=sqlite3.connect)
 
 
 def test_prune_keeps_14_most_recent():

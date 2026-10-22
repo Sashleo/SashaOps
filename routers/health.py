@@ -105,14 +105,27 @@ async def health_page(request: Request):
     except Exception:
         pass
 
+    # 7. Backup copy directory (optional secondary location)
+    backup_copy_dir    = ""
+    backup_copy_dir_ok = None
+    try:
+        from config.settings import settings as _settings
+        backup_copy_dir = _settings.BACKUP_COPY_DIR or ""
+        if backup_copy_dir:
+            backup_copy_dir_ok = os.path.isdir(backup_copy_dir)
+    except Exception:
+        pass
+
     return templates.TemplateResponse(request, "health.html", {
-        "active_page":  "health",
-        "db_open":      db_open,
-        "signing_key":  signing_key,
-        "signing_algo": signing_algo,
-        "audit":        audit,
-        "backup":       backup,
-        "stale":        stale,
-        "bronze_info":  bronze_info,
+        "active_page":        "health",
+        "db_open":            db_open,
+        "signing_key":        signing_key,
+        "signing_algo":       signing_algo,
+        "audit":              audit,
+        "backup":             backup,
+        "stale":              stale,
+        "bronze_info":        bronze_info,
+        "backup_copy_dir":    backup_copy_dir,
+        "backup_copy_dir_ok": backup_copy_dir_ok,
         **_sidebar(request),
     })

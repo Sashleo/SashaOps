@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # localhost, OR this token is set and supplied on the creation request.
     ADMIN_BOOTSTRAP_TOKEN: str = ""
 
+    # ── Backup ────────────────────────────────────────────────────────────────────
+    BACKUP_COPY_DIR: str = ""
+
     # ── Startup secret validation — refuse to boot on blank/default/short secrets ──
     @field_validator("APP_SECRET_KEY")
     @classmethod

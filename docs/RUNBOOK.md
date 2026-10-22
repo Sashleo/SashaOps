@@ -179,6 +179,24 @@ backup file.
    docker logs sashaops | grep backup
    ```
 
+### Secondary backup location (BACKUP_COPY_DIR)
+
+Set `BACKUP_COPY_DIR` in `.env` to copy each backup and its `.sha256` sidecar
+to a second location (e.g., a network share or a second volume):
+
+```
+BACKUP_COPY_DIR=/mnt/nas/sashaops-backups
+```
+
+The `/health` page shows a **Backup copy dir** card when this is set, coloured
+green if the directory is reachable or red if it is not.  A failed copy raises
+an error and is logged — it does not silently succeed.  Check the path is
+accessible from inside the container before setting it:
+
+```
+docker exec sashaops ls /mnt/nas/sashaops-backups
+```
+
 ---
 
 ## 7. A migration failed
