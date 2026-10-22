@@ -1,8 +1,8 @@
 """
-intelligence/feeds.py — RSS feed fetching and classification.
+intelligence/feeds.py — RSS feed fetching for Pakistani news sources.
 
-Fetches feeds from config/feeds/pakistan.json and classifies each headline
-as THREAT / OPPORTUNITY / NEUTRAL using keyword heuristics.
+Fetches feeds from config/feeds/pakistan.json and returns items newest first.
+No classification, no scoring.
 """
 
 import json
@@ -29,8 +29,6 @@ class RSSFeed:
     id: str
     label: str
     url: str
-    category: str = "world"
-    source_type: str = "independent"
 
 
 def _load_feeds() -> list[RSSFeed]:
@@ -68,14 +66,6 @@ class FeedItem:
     summary: str
     url: str
     published: str
-    category: str          # business | world | tech | politics | social
-    bias: str              # independent | government | business
-    classification: str = "NEUTRAL"
-    magnitude: int = 0
-    rationale: str = ""
-    relevance_score: float = 0.0
-    relevance_tags: list = field(default_factory=list)
-    impact: Optional[int] = None
 
 
 @dataclass
@@ -245,8 +235,6 @@ def _fetch_single_feed(
                 summary=_clean(getattr(entry, "summary", "")[:400]),
                 url=getattr(entry, "link", ""),
                 published=pub_str or "",
-                category=feed_def.category,
-                bias=feed_def.source_type,
             )
             items.append(item)
 
@@ -254,64 +242,6 @@ def _fetch_single_feed(
 
     except Exception as e:
         return [], str(e)
-
-
-def classify_headlines(
-    items: List[FeedItem],
-    business_context: str,
-    region_context: str,
-) -> List[FeedItem]:
-    """
-    Classify feed items as THREAT / OPPORTUNITY / NEUTRAL for the given business.
-    Uses keyword heuristics to assign magnitude based on keyword signals.
-    """
-    threat_keywords     = ["crisis", "collapse", "sanction", "ban", "fine", "fraud",
-                           "lawsuit", "shutdown", "default", "recession", "inflation",
-                           "unrest", "strike", "protest", "shortage", "disruption",
-                           "hack", "breach", "recall", "bankruptcy", "layoff"]
-    opportunity_keywords = ["growth", "expansion", "investment", "deal", "contract",
-                            "award", "launch", "partnership", "funding", "ipo",
-                            "merger", "acquisition", "record", "profit", "rebound",
-                            "reform", "digitalisation", "infrastructure", "boost"]
-
-    for item in items:
-        text = (item.title + " " + item.summary).lower()
-
-        threat_hits       = sum(1 for kw in threat_keywords if kw in text)
-        opportunity_hits  = sum(1 for kw in opportunity_keywords if kw in text)
-
-        if threat_hits > opportunity_hits:
-            item.classification = "THREAT"
-            item.magnitude      = min(10, 3 + threat_hits * 2)
-            item.rationale      = f"Negative signals: {threat_hits} threat keywords detected"
-        elif opportunity_hits > threat_hits:
-            item.classification = "OPPORTUNITY"
-            item.magnitude      = min(10, 3 + opportunity_hits * 2)
-            item.rationale      = f"Positive signals: {opportunity_hits} opportunity keywords detected"
-        else:
-            item.classification = "NEUTRAL"
-            item.magnitude      = 2
-
-    return items
-
-
-def get_feed_summary_text(result: FeedResult, max_items: int = 30) -> str:
-    """
-    Format feed results as a text block for AI prompt injection.
-    Sorted by magnitude descending.
-    """
-    sorted_items = sorted(result.items, key=lambda x: x.magnitude, reverse=True)[:max_items]
-
-    lines = [f"NEWS INTELLIGENCE ({result.total_headlines} total headlines)\n"]
-    for item in sorted_items:
-        marker = "[THREAT]" if item.classification == "THREAT" else "[OPP]" if item.classification == "OPPORTUNITY" else "[INFO]"
-        lines.append(
-            f"{marker} [{item.feed_label}] {item.title} | {item.published[:10] if item.published else 'recent'}"
-        )
-        if item.summary:
-            lines.append(f"   {item.summary[:200]}")
-
-    return "\n".join(lines)
 
 
 def _parse_date(entry) -> Optional[str]:
