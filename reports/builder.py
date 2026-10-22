@@ -17,8 +17,7 @@ import base64
 
 from database.connection import get_db
 from config.settings import settings
-from reports.pdf_renderer import render_pdf, save_pdf
-from reports.docx_renderer import render_docx, save_docx
+from reports.pdf_renderer import render_pdf
 from reports.signer import sign_report
 from security.crypto import encrypt_bytes, decrypt_bytes
 

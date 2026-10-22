@@ -89,15 +89,16 @@ async def reports_page(request: Request):
 
     db = get_db()
     total_all = 0
+    signed_count = 0
     last_signed = None
     try:
         row = db.execute("SELECT COUNT(*) FROM reports").fetchone()
         total_all = row[0] if row else 0
         row2 = db.execute(
-            "SELECT created_at FROM reports WHERE signature_path IS NOT NULL "
-            "ORDER BY created_at DESC LIMIT 1"
+            "SELECT COUNT(*), MAX(created_at) FROM reports WHERE signature_path IS NOT NULL"
         ).fetchone()
-        last_signed = row2[0][:16] if row2 else None
+        signed_count = row2[0] if row2 else 0
+        last_signed = row2[1][:16] if row2 and row2[1] else None
     except Exception:
         pass
 
@@ -106,6 +107,7 @@ async def reports_page(request: Request):
         "active_page":  "reports",
         "reports":      reports,
         "total_all":    total_all,
+        "signed_count": signed_count,
         "last_signed":  last_signed,
         **sidebar,
     })
@@ -151,7 +153,7 @@ async def download_pdf(request: Request, report_id: str):
             status_code=409,
         )
 
-    # 3. Signature verification (advisory — AES-256-GCM decryption already guarantees integrity)
+    # 3. Signature verification — refuse to serve if the signature does not match.
     sig_header = "unsigned"
     if record.get("signature_path"):
         import os
@@ -163,9 +165,16 @@ async def download_pdf(request: Request, report_id: str):
                 sig_header = "verified"
                 log.info("Report signature verified", report_id=report_id)
             else:
-                sig_header = "invalid"
-                log.warning("Report signature mismatch - serving file (AES-GCM confirms integrity)",
-                            report_id=report_id, msg=msg)
+                log.error("Report signature mismatch — refusing to serve", report_id=report_id, msg=msg)
+                return HTMLResponse(
+                    _error_page(
+                        "Report signature mismatch",
+                        "This report's digital signature does not match its contents. "
+                        "The file may have been tampered with. "
+                        "Regenerate the report from the Intelligence page.",
+                    ),
+                    status_code=409,
+                )
         else:
             log.warning("Signature file missing", report_id=report_id, path=record["signature_path"])
 
