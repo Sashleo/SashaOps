@@ -212,6 +212,18 @@ def update_filing_classification(
     )
 
 
+# ── Doc statements ────────────────────────────────────────────────────────────
+
+def upsert_doc_statement(db, **kwargs) -> None:
+    cols = list(kwargs)
+    placeholders = ", ".join("?" * len(cols))
+    col_list = ", ".join(cols)
+    db.execute(
+        f"INSERT OR REPLACE INTO doc_statements ({col_list}) VALUES ({placeholders})",
+        list(kwargs.values()),
+    )
+
+
 # ── Fetch log ─────────────────────────────────────────────────────────────────
 
 def upsert_fetch_log(db, **kwargs) -> None:
