@@ -42,8 +42,60 @@ def cmd_status(args) -> int:
 
 
 def cmd_run(args) -> int:
-    print("pipeline run: not implemented yet (available from M2)")
-    return 1
+    from database.connection import init_database, get_db
+    init_database()
+    db = get_db()
+
+    from pipeline.store import create_pipeline_tables
+    create_pipeline_tables(db)
+
+    from pipeline.tickers import M2_TICKERS
+    if args.tickers:
+        tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+    else:
+        tickers = list(M2_TICKERS)
+
+    stages = (args.stages or "discover..fetch").lower()
+    run_discover = "discover" in stages
+    run_fetch    = "fetch"    in stages
+
+    from pipeline.discover import discover_one
+    from pipeline.fetch    import fetch_one
+
+    counts: dict[str, dict] = {}
+
+    for ticker in tickers:
+        disc_result = {"outcome": "skipped", "candidates": []}
+        if run_discover:
+            disc_result = discover_one(ticker)
+            _inc(counts, "discover", disc_result["outcome"])
+            print(f"  discover {ticker}: {disc_result['outcome']} "
+                  f"({len(disc_result['candidates'])} candidates)")
+
+        if not run_fetch:
+            continue
+
+        candidates = disc_result.get("candidates") or []
+        # Fetch the single best candidate per ticker: annual_report > annual_results > interim.
+        _PRIO = {"annual_report": 0, "annual_results": 1, "interim": 2}
+        candidates.sort(key=lambda c: _PRIO.get(c["ann_type"], 9))
+        best = candidates[:1]   # one fetch per ticker for M2
+
+        for c in best:
+            r = fetch_one(db, c)
+            _inc(counts, "fetch", r["outcome"])
+            print(f"  fetch   {ticker}: {r['outcome']}  sha256={r.get('doc_sha256', '')[:12] or '-'}")
+
+    print("\nSummary:")
+    for stage, c in counts.items():
+        parts = "  ".join(f"{k}={v}" for k, v in sorted(c.items()))
+        print(f"  {stage}: {parts}")
+    return 0
+
+
+def _inc(counts: dict, stage: str, outcome: str) -> None:
+    c = counts.setdefault(stage, {})
+    c[outcome] = c.get(outcome, 0) + 1
 
 
 def cmd_reprocess(args) -> int:
