@@ -87,107 +87,6 @@ def _year_of(period: str) -> int:
     return int(m.group(0)) if m else -1
 
 
-def _report_is_sane(report: dict) -> bool:
-    """
-    Accept a parsed annual report only if it forms a complete, internally-consistent
-    statement: revenue, net income and total assets present, and basic accounting
-    identities hold (total assets dominate current assets and equity). Guards against
-    a heuristic PDF parse grabbing the wrong column or a note-reference number.
-    """
-    rev = report.get("revenue")
-    ni  = report.get("net_income")
-    ta  = report.get("total_assets")
-    if not (rev and ni and ta) or ta <= 0:
-        return False
-    ca = report.get("current_assets") or 0
-    eq = report.get("shareholders_equity") or 0
-    cl = report.get("current_liabilities") or 0
-    if ca > ta * 1.05 or eq > ta * 1.05 or cl > ta * 1.05:
-        return False
-    # Net income shouldn't exceed revenue by a wide margin (parse sanity).
-    if abs(ni) > abs(rev) * 2:
-        return False
-    return True
-
-
-class _SkipReport(Exception):
-    """Internal signal: bulk mode deliberately skips annual-report enrichment."""
-
-
-def _same_reporting_basis(summary: dict, report: dict) -> bool:
-    """
-    Whether an annual report describes the SAME reporting entity/basis as the PSX
-    summary, judged by revenue agreement after unit alignment.
-
-    Verified 2026-07-29 (LUCK): PSX publishes STANDALONE Sales of 124,511,744 for
-    FY2025 while the annual report's statements parse to 310,459,264 - the
-    CONSOLIDATED group figure including subsidiaries. Both are correct; they are
-    simply different entities. Adopting the report wholesale silently swapped the
-    income statement onto a different basis from every earlier period in the same
-    series, manufacturing a fake +169% revenue jump for FY2025.
-
-    So wholesale adoption now requires the two revenues to agree within 20% once
-    a power-of-1000 unit difference is allowed for. When they disagree, the PSX
-    summary (verified in Phase 2, Priority 2) stays authoritative for the income
-    statement and the report is used only to FILL missing balance-sheet fields.
-    """
-    s_rev = summary.get("revenue")
-    r_rev = report.get("revenue")
-    if not s_rev or not r_rev:
-        return False
-    ratio = r_rev / s_rev
-    for unit in (1.0, 1000.0, 1 / 1000.0):
-        aligned = ratio / unit
-        if 0.8 <= aligned <= 1.25:
-            return True
-    log.info("Annual report is on a different reporting basis than the PSX summary "
-             "(consolidated vs standalone suspected) - keeping the summary income "
-             "statement", ticker=summary.get("_ticker", "?"),
-             summary_revenue=s_rev, report_revenue=r_rev)
-    return False
-
-
-def _plausible_balance_sheet_value(field: str, value, total_assets) -> bool:
-    """
-    Reject a merged balance-sheet field that cannot be true given total assets.
-
-    Verified 2026-07-29 (HBL): total_equity parsed as 2024.0 - a fiscal YEAR read
-    off the statement header as a figure - against total assets of 3,849,063
-    (PKR '000). That is equity at 0.05% of assets, impossible for a listed bank,
-    and it would have driven ROE, the equity multiplier, DuPont and Altman X4
-    into nonsense. A field this far outside any real balance sheet is dropped and
-    surfaces as "Required: X" rather than poisoning every downstream ratio.
-    """
-    if value is None or not total_assets or total_assets <= 0:
-        return True
-    share = abs(float(value)) / abs(float(total_assets))
-    if field in ("shareholders_equity", "total_equity"):
-        # Even the thinnest listed bank holds >1% equity; anything under that is a
-        # parse artefact, not a capital structure.
-        return share >= 0.01
-    if field in ("current_assets", "current_liabilities", "total_debt", "inventory",
-                 "receivables", "payables", "cash", "retained_earnings"):
-        return share <= 3.0
-    return True
-
-
-def _report_is_reliable(report: dict) -> bool:
-    """
-    Whether an annual-report parse is trustworthy enough to feed real analysis.
-
-    A DIGITAL report (real text layer) is protected by the parser's anchoring, sign
-    and plausibility guards, so it is trusted. An OCR/scanned report is NOT: OCR
-    routinely misreads digits and returns internally impossible figures (a scanned
-    LUCK booklet parsed net income above revenue). An OCR report is therefore trusted
-    ONLY when its balance sheet independently RECONCILES (Assets == Liabilities +
-    Equity within 1%) - an arithmetic cross-check that near-random OCR errors cannot
-    pass by chance. Otherwise we prefer a missing field ("Required: X") over a wrong
-    one, per the accuracy-first rule.
-    """
-    if not report.get("_ocr"):
-        return True
-    return report.get("_balance_ok") is True
-
 
 def _build_doc_financials(table: dict) -> dict:
     """Map a PSX financial table {metric:{period:value}} → analyse_from_document dict."""
@@ -330,7 +229,7 @@ def _is_fresh(fetched_at: Optional[str], max_age_hours: int = 24) -> bool:
         return False
 
 
-def fetch_psx_doc_financials(ticker: str, skip_report: bool = False) -> Optional[tuple]:
+def fetch_psx_doc_financials(ticker: str) -> Optional[tuple]:
     """
     Fetch PSX financials and return (doc_financials_dict, company_name) ready for
     analyse_from_document(). Returns None if no usable revenue figure is found.
@@ -456,100 +355,13 @@ def fetch_psx_doc_financials(ticker: str, skip_report: bool = False) -> Optional
                     return s[0]
         return None
 
-    # ── Deepen with the annual-report PDF ────────────────────────────────────
-    # The PSX summary (structured HTML tables, not OCR) is the AUTHORITATIVE source
-    # for income-statement items and is already in `doc`. The summary lacks
-    # balance-sheet items (assets, equity, debt, current assets/liabilities) needed
-    # for liquidity, leverage, Altman Z and ROE - the annual report has them. The
-    # report is used only to FILL those gaps, and only when it is RELIABLE
-    # (_report_is_reliable): a digital report, or an OCR report whose balance sheet
-    # reconciles. An unreliable OCR parse is discarded so its misread digits never
-    # reach an analysis - the field stays missing and surfaces as "Required: X".
-    #   • WHOLESALE: a reliable, complete statement replaces the summary outright.
-    #   • MERGE: a reliable partial report fills only the missing balance-sheet fields.
-    source = "psx_summary"
-    summary_fy = doc.get("_fiscal_year")
-    _BS_FIELDS = ("total_assets", "shareholders_equity", "total_debt", "cash",
-                  "current_assets", "current_liabilities", "inventory", "receivables",
-                  "payables", "retained_earnings", "ebit", "interest_expense",
-                  "depreciation", "gross_profit")
-    try:
-        if skip_report:
-            # Bulk-sweep mode. Measured 2026-07-30: the annual-report step costs
-            # ~104s per ticker (PDF download + parse), i.e. ~22 hours across 757
-            # listed companies - impractical as one job. The PSX summary alone
-            # carries the income statement, which is what breadth-oriented work
-            # (sector medians, percentiles, peer comparison) needs; balance-sheet
-            # enrichment stays a per-ticker on-demand cost.
-            raise _SkipReport()
-        from intelligence.psx_report_parser import fetch_psx_report_financials
-        report = fetch_psx_report_financials(ticker)
-        if report:
-            if "ebitda" not in report and report.get("ebit") and report.get("depreciation"):
-                report["ebitda"] = report["ebit"] + report["depreciation"]
-
-            if not _report_is_reliable(report):
-                # Scanned/OCR report that did not reconcile: do NOT let its values into
-                # the analysis. Keep the clean summary; balance-sheet gaps stay missing.
-                source = "psx_summary(report_rejected_unreliable_ocr)"
-                log.info("Annual report rejected as unreliable OCR - summary kept",
-                         ticker=ticker, balance_ok=report.get("_balance_ok"))
-            elif _report_is_sane(report) and _same_reporting_basis(doc, report):
-                # Reliable, complete statement on the SAME reporting basis as the
-                # PSX summary — adopt wholesale.
-                if not report.get("_fiscal_year") and summary_fy:
-                    report["_fiscal_year"] = summary_fy
-                doc = report
-                source = "psx_annual_report_ocr" if report.get("_ocr") else "psx_annual_report"
-            else:
-                # Reliable but partial report — merge balance-sheet fields if units are
-                # consistent with the summary (report revenue within 0.5x-2x of summary
-                # revenue). PSX summary is in PKR '000; annual reports may be in '000 or
-                # actual PKR. Infer the scale from the revenue ratio and snap to the
-                # nearest power of 1000.
-                s_rev = doc.get("revenue")
-                r_rev_chk = report.get("revenue")
-                scale, units_ok = 1.0, True
-                if s_rev and r_rev_chk:
-                    ratio = r_rev_chk / s_rev
-                    if   0.5   <= ratio <= 2.0:    scale = 1.0
-                    elif 500   <= ratio <= 2000:   scale = 1.0 / 1000    # report in actual PKR
-                    elif 0.0005 <= ratio <= 0.002: scale = 1000.0        # report in PKR millions
-                    else:                          units_ok = False      # can't reconcile
-                # Fire whenever the report contributed ANY balance-sheet field the
-                # summary lacks (total_assets ideal but not required — filling
-                # inventory/receivables/payables still improves efficiency/leverage).
-                if units_ok and any(report.get(k) is not None for k in _BS_FIELDS):
-                    filled, rejected = [], []
-                    ta = report.get("total_assets")
-                    ta = ta * scale if ta is not None else doc.get("total_assets")
-                    for k in _BS_FIELDS:
-                        if doc.get(k) is None and report.get(k) is not None:
-                            candidate = report[k] * scale
-                            if not _plausible_balance_sheet_value(k, candidate, ta):
-                                rejected.append(k)
-                                continue
-                            doc[k] = candidate
-                            filled.append(k)
-                    if rejected:
-                        log.warning("Dropped implausible balance-sheet fields from report",
-                                   ticker=ticker, fields=rejected)
-                    if filled:
-                        source = "psx_summary+report_bs" + ("_ocr" if report.get("_ocr") else "")
-                        log.info("Merged balance-sheet fields from annual report",
-                                 ticker=ticker, fields=filled, scale=scale)
-    except _SkipReport:
-        source = "psx_summary(bulk_no_report)"
-    except Exception as e:
-        log.info("PSX report enrichment skipped", ticker=ticker, error=str(e)[:80])
-
-    # Gross profit from the PSX ratio table when the chosen source omits it.
+    # Gross profit from the PSX ratio table when the summary omits it.
     if "gross_profit" not in doc:
         gpm = _ratio_latest("gross profit margin")
         if gpm is not None and doc.get("revenue"):
             doc["gross_profit"] = doc["revenue"] * gpm / 100.0
 
-    doc["_source"] = source
+    doc["_source"] = "psx_summary"
     name = ticker
     try:
         from intelligence.exchange_crawlers.psx import search_psx_company
@@ -597,11 +409,7 @@ def bulk_refresh_psx_financials() -> int:
     done = 0
     for ticker in tickers:
         try:
-            # skip_report: the per-ticker annual-report step measured ~104s
-            # (2026-07-30), which is ~22 hours across every listed company. The
-            # summary alone carries the income statement this job exists to
-            # populate; balance-sheet enrichment happens per ticker on demand.
-            if fetch_psx_doc_financials(ticker, skip_report=True):
+            if fetch_psx_doc_financials(ticker):
                 done += 1
         except Exception as e:
             log.info("Bulk PSX financials refresh skipped ticker",

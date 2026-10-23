@@ -1,72 +1,51 @@
 """
-Regression tests for reporting-basis and balance-sheet plausibility guards.
+Regression tests for PSX financials data guards.
 
-Both cases are real failures found while building Phase 3's multi-period history
-against live data, and both would have corrupted every downstream ratio, trend and
-chart while looking entirely plausible on screen.
+The reporting-basis and balance-sheet plausibility guards (_same_reporting_basis,
+_plausible_balance_sheet_value) were helpers for the old PDF-report enrichment step,
+which was deleted as part of the V2 pipeline plan (M1–M7). Their tests are removed
+here; the functions are gone and must not be re-added until M7 publishes verified
+figures via the Gold table.
+
+The guard that remains: psx_financials must never carry a PDF-derived _source.
 """
+
+import pathlib
 
 from bs4 import BeautifulSoup
 
 from intelligence.exchange_crawlers.psx import _parse_financial_table
 from intelligence.psx_financials import (
-    _same_reporting_basis, _plausible_balance_sheet_value, build_period_rows,
+    build_period_rows,
     _build_doc_financials,
 )
 
 
-# ── Consolidated vs standalone (LUCK, verified 2026-07-29) ────────────────────
+# ── V2 pipeline guard: no PDF-derived source must reach psx_financials ────────
 
-def test_consolidated_report_is_not_same_basis_as_standalone_summary():
-    # PSX publishes STANDALONE Sales 124,511,744 for LUCK FY2025; the annual
-    # report's statements parse to the CONSOLIDATED 310,459,264. Adopting the
-    # report wholesale swapped the income statement onto a different entity from
-    # every earlier period, manufacturing a fake +169% revenue jump.
-    assert _same_reporting_basis(
-        {"revenue": 124_511_744.0}, {"revenue": 310_459_264.0}) is False
-
-
-def test_same_basis_same_units_is_accepted():
-    assert _same_reporting_basis(
-        {"revenue": 124_511_744.0}, {"revenue": 124_511_744.0}) is True
-
-
-def test_same_basis_with_thousands_unit_difference_is_accepted():
-    # The report may print actual rupees where the PSX summary prints thousands.
-    # That is a unit difference, not a different reporting entity.
-    assert _same_reporting_basis(
-        {"revenue": 124_511_744.0}, {"revenue": 124_511_744_000.0}) is True
-
-
-def test_missing_revenue_blocks_wholesale_adoption():
-    assert _same_reporting_basis({"revenue": None}, {"revenue": 1.0}) is False
-    assert _same_reporting_basis({"revenue": 1.0}, {}) is False
-
-
-# ── Absurd balance-sheet values (HBL, verified 2026-07-29) ───────────────────
-
-def test_year_misparsed_as_equity_is_rejected():
-    # HBL stored total_equity = 2024.0 against total assets of 3,849,063: a fiscal
-    # YEAR read off the statement header. Equity at 0.05% of assets is impossible
-    # for a listed bank and would wreck ROE, equity multiplier, DuPont and Altman X4.
-    assert _plausible_balance_sheet_value(
-        "shareholders_equity", 2024.0, 3_849_063.0) is False
-
-
-def test_real_bank_equity_is_accepted():
-    assert _plausible_balance_sheet_value(
-        "shareholders_equity", 300_000.0, 3_849_063.0) is True
-
-
-def test_component_larger_than_total_assets_is_rejected():
-    assert _plausible_balance_sheet_value(
-        "current_assets", 38_490_630.0, 3_849_063.0) is False
-
-
-def test_guard_is_inert_without_total_assets():
-    # No basis for comparison means no rejection - missing data must not be
-    # converted into a false positive.
-    assert _plausible_balance_sheet_value("shareholders_equity", 2024.0, None) is True
+def test_psx_annual_report_source_strings_deleted_from_psx_financials():
+    """
+    Until M7 publishes verified figures, psx_financials must not carry any
+    PDF-derived _source tag. Assert the forbidden strings are absent from the
+    module source — a static proof that the report step is gone.
+    """
+    src = (pathlib.Path(__file__).parent.parent
+           / "intelligence" / "psx_financials.py").read_text(encoding="utf-8")
+    forbidden = [
+        "psx_annual_report",          # wholesale-adoption source tags
+        "psx_summary+report_bs",      # partial-merge source tag
+        "fetch_psx_report_financials", # import of the PDF step
+        "_SkipReport",                # internal skip-signal class
+        "_same_reporting_basis",      # reporting-basis guard
+        "_plausible_balance_sheet_value",  # value plausibility guard
+        "_report_is_sane",            # report sanity guard
+        "_report_is_reliable",        # report reliability guard
+    ]
+    for s in forbidden:
+        assert s not in src, (
+            f"Forbidden string '{s}' found in psx_financials.py — "
+            f"the report step must stay deleted until M7 publishes Gold figures"
+        )
 
 
 # ── Multi-period history extraction ──────────────────────────────────────────
