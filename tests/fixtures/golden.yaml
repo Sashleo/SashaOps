@@ -1,0 +1,57 @@
+# Golden values for M6 accuracy checks.
+# Values must be in actual PKR (Rupees), not thousands.
+# Extracted values from PDFs may be in thousands if scale=1 is mis-detected —
+# a 1000x discrepancy in the accuracy table is the signal that scale detection failed.
+#
+# Structure:
+#   <TICKER>:
+#     period_end: "YYYY-MM-DD"
+#     months: 12
+#     <basis>:          # consolidated | unconsolidated
+#       <field>: <value_in_rupees>
+#
+# Fields available from the parser (set to null to skip, fill a number to compare):
+#   total_assets, total_equity, total_liabilities
+#   revenue, gross_profit, ebit, net_income
+#   cash, receivables, payables
+#   ocf, capex, depreciation, interest_expense
+#   long_term_borrowings, short_term_borrowings, lease_liabilities
+
+LUCK:
+  period_end: "2026-06-30"
+  months: 12
+  consolidated:
+    total_assets: null        # e.g. 793907012000 if in thousands
+    total_equity: null
+    total_liabilities: null
+    revenue: null
+    gross_profit: null
+    ebit: null
+    net_income: null
+    cash: null
+    receivables: null
+    payables: null
+
+NCL:
+  period_end: "2026-06-30"
+  months: 12
+  consolidated:
+    total_assets: null
+    total_equity: null
+    total_liabilities: null
+    revenue: null
+    gross_profit: null
+    ebit: null
+    net_income: null
+    cash: null
+    receivables: null
+    payables: null
+  unconsolidated:
+    total_assets: null
+    total_equity: null
+    total_liabilities: null
+    revenue: null
+    gross_profit: null
+    ebit: null
+    net_income: null
+    cash: null

@@ -60,6 +60,8 @@ def cmd_run(args) -> int:
     run_fetch    = "fetch"    in stages
     run_classify = "classify" in stages
     run_locate   = "locate"   in stages
+    run_extract  = "extract"  in stages
+    run_check    = "check"    in stages
 
     from pipeline.discover import discover_one
     from pipeline.fetch    import fetch_one
@@ -88,10 +90,11 @@ def cmd_run(args) -> int:
                   f"sha256={(r.get('doc_sha256') or '')[:12] or '-'}  "
                   f"period={pe}  type={c['ann_type']}")
 
-    if run_classify or run_locate:
+    if run_classify or run_locate or run_extract or run_check:
         ticker_placeholders = ", ".join("?" * len(tickers))
         filing_rows = db.execute(
-            f"SELECT doc_sha256, ticker FROM filings WHERE ticker IN ({ticker_placeholders})",
+            f"SELECT doc_sha256, ticker FROM filings "
+            f"WHERE ticker IN ({ticker_placeholders})",
             tickers,
         ).fetchall()
     else:
@@ -119,6 +122,35 @@ def cmd_run(args) -> int:
             print(f"  locate  {filing_ticker}: {r['outcome']}  "
                   f"sha256={filing_sha256[:12]}  "
                   f"stmts={len(stmts)}  types={types_str}  basis={bases_str}")
+
+    if run_extract:
+        from pipeline.extract import extract_one
+        for filing_sha256, filing_ticker in filing_rows:
+            r = extract_one(db, filing_sha256)
+            _inc(counts, "extract", r["outcome"])
+            print(f"  extract {filing_ticker}: {r['outcome']}  "
+                  f"sha256={filing_sha256[:12]}  "
+                  f"stmts={r.get('statements_written', 0)}  "
+                  f"items={r.get('items_written', 0)}")
+
+    if run_check:
+        from pipeline.checks import check_one
+        stmt_ids = db.execute(
+            "SELECT statement_id, ticker, statement_type, basis "
+            "FROM statements WHERE ticker IN "
+            f"({', '.join('?' * len(tickers))})",
+            tickers,
+        ).fetchall()
+        for sid_row in stmt_ids:
+            r = check_one(db, sid_row["statement_id"])
+            _inc(counts, "check", r["outcome"])
+            checks_summary = "  ".join(
+                f"{k}={'ok' if v.get('ok') else ('fail' if v.get('ok') is False else '?')}"
+                for k, v in r.get("checks", {}).items()
+            ) or "-"
+            print(f"  check   {sid_row['ticker']}: {r['outcome']}  "
+                  f"{sid_row['statement_type']}:{sid_row['basis']}  "
+                  f"fields={r.get('fields_count', '-')}  {checks_summary}")
 
     print("\nSummary:")
     for stage, c in counts.items():
