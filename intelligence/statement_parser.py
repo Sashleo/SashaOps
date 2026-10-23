@@ -28,6 +28,7 @@ confidence rather than silently shipping wrong numbers.
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Optional
 
 
@@ -202,16 +203,64 @@ _FIELDS = {
     "interest_expense": [
         ("medium", r"^\s*(?:finance\s+cost|financial\s+charges|mark[\s-]*up.*expensed)\b"),
     ],
+    # ── Equity supplemental ───────────────────────────────────────────────────
+    "retained_earnings": [
+        ("high",   r"^\s*unappropriated\s+(?:profit|profits?|loss)\b"),
+        ("high",   r"^\s*accumulated\s+(?:profit|loss)\b"),
+        ("medium", r"^\s*retained\s+(?:earnings?|profits?)\b"),
+    ],
+    # ── Working capital (BS) ──────────────────────────────────────────────────
+    "receivables": [
+        ("high",   r"^\s*trade\s+debts?\b"),
+        ("medium", r"^\s*trade\s+(?:and\s+other\s+)?receivables?\b"),
+        ("medium", r"^\s*accounts?\s+receivable\b"),
+    ],
+    "payables": [
+        ("high",   r"^\s*trade\s+and\s+other\s+payables?\b"),
+        ("medium", r"^\s*trade\s+payables?\b"),
+        ("medium", r"^\s*creditors,?\s+accrued\b"),
+    ],
+    # ── Cash-flow statement ───────────────────────────────────────────────────
+    "ocf": [
+        ("high",   r"^\s*net\s+cash\s+(?:from|generated\s+from|used\s+in)\s+operating\s+activities\b"),
+        ("medium", r"^\s*net\s+cash\s+flows?\s+(?:from|used\s+in)\s+operating\s+activities\b"),
+    ],
+    "capex": [
+        ("high",   r"^\s*purchase\s+of\s+property,?\s*plant\s+and\s+equipment\b"),
+        ("high",   r"^\s*additions?\s+to\s+property,?\s*plant\s+and\s+equipment\b"),
+        ("medium", r"^\s*capital\s+expenditure\b"),
+        ("medium", r"^\s*purchase\s+of\s+(?:fixed|tangible)\s+assets?\b"),
+    ],
+    "depreciation": [
+        ("high",   r"^\s*depreciation\s+and\s+amortis[ae]tion\b"),
+        # Exclude "Depreciation on right-of-use assets" (sub-item, not the total).
+        ("high",   r"^\s*depreciation\b(?!\s+(?:and\s+amortis[ae]tion|on\s+right[\s-]of[\s-]use))"),
+        ("medium", r"^\s*amortis[ae]tion\b"),
+    ],
+    # ── Debt components (summed to total_debt in to_financial_dict) ───────────
+    "long_term_borrowings": [
+        ("high",   r"^\s*long[\s-]*term\s+(?:financing|borrowings?|loans?\s+and\s+borrowings?)\b"),
+    ],
+    "current_portion_ltd": [
+        ("high",   r"^\s*current\s+(?:maturity|portion|maturities)\s+of\s+long[\s-]*term\b"),
+    ],
+    "short_term_borrowings": [
+        ("high",   r"^\s*short[\s-]*term\s+(?:borrowings?|financing|running\s+finance)\b"),
+        ("medium", r"^\s*running\s+finance\b"),
+    ],
+    "lease_liabilities": [
+        ("high",   r"^\s*(?:total\s+)?lease\s+liabilities\b"),
+    ],
 }
 
 # Lines that must never be treated as a balance-sheet total even if a keyword appears.
 _SUBITEM_GUARD = re.compile(
     r"long\s+term\s+investments?|spare\s+parts?|loose\s+tools?|stores?\b|"
-    r"advances?|deposits?|prepayments?|other\s+receivables?|trade\s+(?:debts?|receivables?)|"
-    # Insurance/Takaful sub-fund totals ("Total assets of Operator's Fund") are a
+    r"advances?|deposits?|prepayments?|"
+    # Insurance/Takaful sub-fund totals ("Total assets of Operator’s Fund") are a
     # SEGMENT, not the company total. Matched via the "of ... Fund" qualifier so a
     # real mutual fund - where "Fund" IS the entity - still parses normally.
-    r"\bof\s+(?:the\s+)?(?:operator|participant|statutory|policyholder|shareholder)[’'s]*\s*"
+    r"\bof\s+(?:the\s+)?(?:operator|participant|statutory|policyholder|shareholder)\S*\s*"
     r"(?:fund|sub[\s-]*fund)",
     re.I,
 )
@@ -222,6 +271,8 @@ _SUBITEM_GUARD = re.compile(
 _MUST_BE_POSITIVE = {
     "revenue", "total_assets", "current_assets",
     "current_liabilities", "total_liabilities", "cash", "inventory",
+    "receivables", "payables",
+    "long_term_borrowings", "current_portion_ltd", "short_term_borrowings", "lease_liabilities",
 }
 
 # Plausible magnitudes for a PSX-listed company, in ACTUAL rupees AFTER scaling.
@@ -247,6 +298,8 @@ _PLAUSIBLE = {
     "ebit":                (1e5, 2e12),
     "cash":                (1e4, 5e12),
     "inventory":           (1e4, 2e12),
+    "receivables":         (1e6, 5e11),
+    "payables":            (1e6, 5e11),
 }
 _CANDIDATE_SCALES = (1, 1_000, 1_000_000)
 
@@ -310,8 +363,11 @@ def parse_statements(text: str) -> dict:
       { field: {value, raw, scale, column, all_columns, source_line, label, confidence}, ... }
       plus _unit_scale, _unit_evidence, _balance_check.
     """
+    # Resolve Unicode ligatures (e.g. U+FB01 ﬁ → "fi") so "profit" is found even
+    # when pdfplumber emits ligature characters instead of the base letters.
+    text = unicodedata.normalize("NFKC", text or "")
     scale, evidence = detect_scale(text)
-    lines = [l for l in (text or "").split("\n") if l.strip()]
+    lines = [l for l in text.split("\n") if l.strip()]
 
     found: dict = {}
     for field, anchors in _FIELDS.items():
@@ -431,6 +487,12 @@ def to_financial_dict(parsed: dict, min_confidence: str = "medium") -> dict:
     # Map to the ratio engine's vocabulary.
     if "total_equity" in out:
         out.setdefault("shareholders_equity", out["total_equity"])
+    # Derive total_debt from the four components; only when ALL are present so we
+    # never ship a partial sum (a missing component would silently understate debt).
+    _debt_components = ("long_term_borrowings", "current_portion_ltd",
+                        "short_term_borrowings", "lease_liabilities")
+    if all(c in out for c in _debt_components):
+        out["total_debt"] = sum(out[c] for c in _debt_components)
     out["_already_scaled"] = True     # tell financial_model not to apply its own x1000
     return out
 

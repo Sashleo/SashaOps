@@ -7,7 +7,7 @@ value-corrupting bugs can silently come back.
 """
 
 from intelligence.statement_parser import (
-    _normalize_numbers, parse_statements, detect_scale,
+    _normalize_numbers, parse_statements, detect_scale, to_financial_dict,
 )
 
 
@@ -182,3 +182,146 @@ def test_space_separated_columns_are_never_merged_into_one_number():
     out = _normalize_numbers("NET ASSETS 488,615 410,798")
     assert "488,615,410,798" not in out
     assert "488,615" in out and "410,798" in out
+
+
+# ── P3: NFKC ligature normalisation ──────────────────────────────────────────
+
+def test_nfkc_fi_ligature_in_profit_label():
+    # U+FB01 (ﬁ) is the fi-ligature. PSX PDFs sometimes encode "profit" as
+    # "proﬁt". After NFKC normalisation the net_income anchor must still fire.
+    text = "Net proﬁt for the year 5,678,901 4,321,098\n"
+    p = parse_statements(text)
+    assert "net_income" in p
+    assert p["net_income"]["raw"] == 5_678_901.0
+
+
+def test_nfkc_ff_ligature_in_label():
+    # U+FB00 (ﬀ) is the ff-ligature. Gross profit contains no ff, but "profit" can
+    # appear as "proﬁt" (fi). Confirm that NFKC does not corrupt clean text.
+    text = "Gross profit 8,765,432 7,654,321\n"
+    p = parse_statements(text)
+    assert "gross_profit" in p
+    assert p["gross_profit"]["raw"] == 8_765_432.0
+
+
+# ── P5: new statement_parser fields ──────────────────────────────────────────
+
+def test_retained_earnings_unappropriated_profit():
+    p = parse_statements("Unappropriated profit/(loss) 3,456,789 2,987,654\n")
+    assert "retained_earnings" in p
+    assert p["retained_earnings"]["raw"] == 3_456_789.0
+
+
+def test_retained_earnings_accumulated_profit():
+    p = parse_statements("Accumulated profit 12,345,678 10,987,654\n")
+    assert "retained_earnings" in p
+    assert p["retained_earnings"]["raw"] == 12_345_678.0
+
+
+def test_trade_debts_parsed_as_receivables():
+    p = parse_statements("Trade debts - net of provision 45,678,901 38,765,432\n")
+    assert "receivables" in p
+    assert p["receivables"]["raw"] == 45_678_901.0
+
+
+def test_trade_receivables_parsed_as_receivables():
+    p = parse_statements("Trade and other receivables 23,456,789 19,876,543\n")
+    assert "receivables" in p
+
+
+def test_payables_line_parsed():
+    p = parse_statements("Trade and other payables 23,456,789 19,876,543\n")
+    assert "payables" in p
+    assert p["payables"]["raw"] == 23_456_789.0
+
+
+def test_operating_cash_flow_parsed():
+    p = parse_statements("Net cash generated from operating activities 8,765,432 7,654,321\n")
+    assert "ocf" in p
+    assert p["ocf"]["raw"] == 8_765_432.0
+
+
+def test_operating_cash_flow_negative():
+    p = parse_statements("Net cash used in operating activities (1,234,567) (2,345,678)\n")
+    assert "ocf" in p
+    assert p["ocf"]["raw"] == -1_234_567.0
+
+
+def test_capex_purchase_of_ppe():
+    p = parse_statements("Purchase of property, plant and equipment (3,456,789) (2,987,654)\n")
+    assert "capex" in p
+    assert p["capex"]["raw"] == -3_456_789.0
+
+
+def test_capex_additions_to_ppe():
+    p = parse_statements("Additions to property, plant and equipment 5,678,901 4,321,098\n")
+    assert "capex" in p
+    assert p["capex"]["raw"] == 5_678_901.0
+
+
+def test_depreciation_and_amortisation():
+    p = parse_statements("Depreciation and amortisation 2,345,678 1,987,654\n")
+    assert "depreciation" in p
+    assert p["depreciation"]["raw"] == 2_345_678.0
+
+
+def test_depreciation_bare_label():
+    p = parse_statements("Depreciation 1,234,567 987,654\n")
+    assert "depreciation" in p
+    assert p["depreciation"]["raw"] == 1_234_567.0
+
+
+def test_depreciation_righ_of_use_not_matched():
+    # Sub-item; the depreciation anchor must NOT fire on this line.
+    p = parse_statements("Depreciation on right-of-use assets 234,567 198,765\n")
+    assert "depreciation" not in p
+
+
+def test_long_term_borrowings():
+    p = parse_statements("Long-term financing 50,000 45,000\n")
+    assert "long_term_borrowings" in p
+    assert p["long_term_borrowings"]["raw"] == 50_000.0
+
+
+def test_current_portion_ltd():
+    p = parse_statements("Current portion of long-term financing 10,000 8,000\n")
+    assert "current_portion_ltd" in p
+    assert p["current_portion_ltd"]["raw"] == 10_000.0
+
+
+def test_short_term_borrowings():
+    p = parse_statements("Short-term borrowings 15,000 12,000\n")
+    assert "short_term_borrowings" in p
+    assert p["short_term_borrowings"]["raw"] == 15_000.0
+
+
+def test_lease_liabilities():
+    p = parse_statements("Lease liabilities 5,000 4,000\n")
+    assert "lease_liabilities" in p
+    assert p["lease_liabilities"]["raw"] == 5_000.0
+
+
+def test_total_debt_computed_from_all_four_components():
+    text = (
+        "Rupees in '000\n"
+        "Long-term financing 50,000 45,000\n"
+        "Current portion of long-term financing 10,000 8,000\n"
+        "Short-term borrowings 15,000 12,000\n"
+        "Lease liabilities 5,000 4,000\n"
+    )
+    p = parse_statements(text)
+    flat = to_financial_dict(p)
+    assert "total_debt" in flat
+    # 80,000 thousands = 80,000,000 actual PKR (scale x1000)
+    assert flat["total_debt"] == 80_000 * 1_000
+
+
+def test_total_debt_absent_when_component_missing():
+    text = (
+        "Rupees in '000\n"
+        "Long-term financing 50,000 45,000\n"
+        "Current portion of long-term financing 10,000 8,000\n"
+    )
+    p = parse_statements(text)
+    flat = to_financial_dict(p)
+    assert "total_debt" not in flat
