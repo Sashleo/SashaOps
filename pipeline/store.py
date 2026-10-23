@@ -198,6 +198,20 @@ def upsert_filing(db, **kwargs) -> None:
     )
 
 
+def update_filing_classification(
+    db,
+    doc_sha256: str,
+    doc_class: str,
+    text_pages: int,
+    classifier_version: str,
+) -> None:
+    db.execute(
+        "UPDATE filings SET doc_class=?, text_pages=?, classifier_version=? "
+        "WHERE doc_sha256=?",
+        (doc_class, text_pages, classifier_version, doc_sha256),
+    )
+
+
 # ── Fetch log ─────────────────────────────────────────────────────────────────
 
 def upsert_fetch_log(db, **kwargs) -> None:

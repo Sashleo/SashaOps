@@ -58,6 +58,7 @@ def cmd_run(args) -> int:
     stages = (args.stages or "discover..fetch").lower()
     run_discover = "discover" in stages
     run_fetch    = "fetch"    in stages
+    run_classify = "classify" in stages
 
     from pipeline.discover import discover_one
     from pipeline.fetch    import fetch_one
@@ -85,6 +86,22 @@ def cmd_run(args) -> int:
             print(f"  fetch   {ticker}: {r['outcome']}  "
                   f"sha256={(r.get('doc_sha256') or '')[:12] or '-'}  "
                   f"period={pe}  type={c['ann_type']}")
+
+    if run_classify:
+        from pipeline.classify import classify_one
+        ticker_placeholders = ", ".join("?" * len(tickers))
+        filing_rows = db.execute(
+            f"SELECT doc_sha256, ticker FROM filings WHERE ticker IN ({ticker_placeholders})",
+            tickers,
+        ).fetchall()
+        for filing_sha256, filing_ticker in filing_rows:
+            r = classify_one(db, filing_sha256)
+            _inc(counts, "classify", r["outcome"])
+            tp = r.get("text_pages")
+            print(f"  classify {filing_ticker}: {r['outcome']}  "
+                  f"sha256={filing_sha256[:12]}  "
+                  f"class={r.get('doc_class') or '-'}  "
+                  f"text_pages={tp if tp is not None else '-'}")
 
     print("\nSummary:")
     for stage, c in counts.items():
