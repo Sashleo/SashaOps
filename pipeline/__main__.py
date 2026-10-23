@@ -84,7 +84,7 @@ def cmd_run(args) -> int:
         for c in best:
             r = fetch_one(db, c)
             _inc(counts, "fetch", r["outcome"])
-            print(f"  fetch   {ticker}: {r['outcome']}  sha256={r.get('doc_sha256', '')[:12] or '-'}")
+            print(f"  fetch   {ticker}: {r['outcome']}  sha256={(r.get('doc_sha256') or '')[:12] or '-'}")
 
     print("\nSummary:")
     for stage, c in counts.items():
