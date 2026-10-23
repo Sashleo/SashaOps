@@ -37,9 +37,10 @@ _INTERIM_TITLES = [
 ]
 
 # Extracts "Month D, YYYY" or "D Month YYYY" from titles like
-# "Transmission of Annual Report for the Year Ended June 30, 2025".
+# "Transmission of Annual Report for the Year Ended June 30, 2025" and
+# "Transmission of Annual Report for the year ended - June 30, 2026".
 _PERIOD_END_RE = re.compile(
-    r"(?:year|period|quarter)\s+end(?:ed)?\s+"
+    r"(?:year|period|quarter)\s+end(?:ed)?(?:\s*[-–]\s*|\s+)"
     r"(\w+\s+\d{1,2},?\s*\d{4}|\d{1,2}\s+\w+\s+\d{4})",
     re.IGNORECASE,
 )
@@ -140,7 +141,28 @@ def discover_one(ticker: str) -> dict:
         log.warning("S1 Discover fetch_failed", ticker=ticker, error=reason)
         return {"ticker": ticker, "outcome": f"fetch_failed:{reason}", "candidates": []}
 
-    all_anns = (data or {}).get("financial_announcements") or []
+    # fetch_psx_company swallows all exceptions and returns {"error": ...}.
+    # A 429 / blocked response means the page never loaded; do not record it as
+    # no_report_announcements — that would suppress a retry next run.
+    err = (data or {}).get("error")
+    if err:
+        err_s = str(err)
+        if "429" in err_s or "too many" in err_s.lower() or "rate" in err_s.lower():
+            log.warning("S1 Discover rate_limited", ticker=ticker, error=err_s[:80])
+            return {"ticker": ticker, "outcome": "rate_limited", "candidates": []}
+        log.warning("S1 Discover fetch_failed", ticker=ticker, error=err_s[:80])
+        return {"ticker": ticker, "outcome": f"fetch_failed:{err_s[:80]}", "candidates": []}
+
+    if not isinstance(data, dict) or "financial_announcements" not in data:
+        log.warning("S1 Discover source_changed", ticker=ticker,
+                    reason="financial_announcements table absent")
+        return {
+            "ticker": ticker,
+            "outcome": "source_changed: financial_announcements table absent",
+            "candidates": [],
+        }
+
+    all_anns = data["financial_announcements"] or []
     err = _validate_ann_structure(all_anns)
     if err:
         log.warning("S1 Discover source_changed", ticker=ticker, reason=err)

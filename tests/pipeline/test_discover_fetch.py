@@ -248,6 +248,39 @@ def test_discover_one_falls_back_to_interim_when_no_annual_report(monkeypatch):
     assert result["candidates"][0]["ann_type"] == "interim"
 
 
+def test_discover_one_rate_limited_when_error_contains_429(monkeypatch):
+    """fetch_psx_company returning {"error": "429..."} must yield rate_limited, not no_report_announcements."""
+    monkeypatch.setattr(
+        "pipeline.discover.fetch_psx_company",
+        lambda ticker, **_kw: {"error": "429 Too Many Requests", "ticker": ticker},
+    )
+    result = discover_one("INDU")
+    assert result["outcome"] == "rate_limited"
+    assert result["candidates"] == []
+
+
+def test_discover_one_source_changed_when_table_absent(monkeypatch):
+    """fetch_psx_company returning a dict without financial_announcements key must yield source_changed."""
+    monkeypatch.setattr(
+        "pipeline.discover.fetch_psx_company",
+        lambda ticker, **_kw: {"ticker": ticker, "board": []},
+    )
+    result = discover_one("DGKC")
+    assert result["outcome"].startswith("source_changed:")
+    assert "financial_announcements" in result["outcome"]
+    assert result["candidates"] == []
+
+
+def test_period_end_with_dash_separator():
+    """Real PSX title format: 'year ended - June 30, 2026'."""
+    assert _period_end_from_title(
+        "Transmission of Annual Report for the year ended - June 30, 2026"
+    ) == "2026-06-30"
+    assert _period_end_from_title(
+        "period ended - March 31, 2026"
+    ) == "2026-03-31"
+
+
 # ── fetch_one ─────────────────────────────────────────────────────────────────
 
 @pytest.fixture
