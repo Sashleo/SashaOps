@@ -54,6 +54,37 @@ def _date_key(raw: str) -> date:
     return date.min
 
 
+def _validate_ann_structure(anns: list) -> str | None:
+    """
+    Check that the list returned for financial_announcements actually looks like
+    an announcements table and not some other table the scraper may have picked up
+    if PSX rearranges its page.
+
+    Returns None if the structure looks correct, or "source_changed: <reason>"
+    if it doesn't.  An empty list is fine — the company may have no announcements.
+    """
+    if not anns:
+        return None
+
+    sample = [a for a in anns[:5] if isinstance(a, dict)]
+    if not sample:
+        return f"source_changed: expected list of dicts, got {type(anns[0]).__name__}"
+
+    expected = {"date", "title", "pdf_url"}
+    for a in sample[:3]:
+        missing = expected - set(a.keys())
+        if missing:
+            return f"source_changed: missing keys {sorted(missing)}"
+
+    # Majority of dates must parse.  If they don't, a different table is being read.
+    bad = [a.get("date", "") for a in sample
+           if a.get("date") and _date_key(a["date"]) == date.min]
+    if len(bad) > len(sample) // 2:
+        return f"source_changed: dates do not parse: {bad[:2]}"
+
+    return None
+
+
 def discover_one(ticker: str) -> dict:
     """
     Find annual-report announcement URLs for one ticker.
@@ -73,8 +104,13 @@ def discover_one(ticker: str) -> dict:
         log.warning("S1 Discover fetch_failed", ticker=ticker, error=reason)
         return {"ticker": ticker, "outcome": f"fetch_failed:{reason}", "candidates": []}
 
-    anns = [a for a in ((data or {}).get("financial_announcements") or [])
-            if a.get("pdf_url")]
+    all_anns = (data or {}).get("financial_announcements") or []
+    err = _validate_ann_structure(all_anns)
+    if err:
+        log.warning("S1 Discover source_changed", ticker=ticker, reason=err)
+        return {"ticker": ticker, "outcome": err, "candidates": []}
+
+    anns = [a for a in all_anns if a.get("pdf_url")]
 
     candidates = []
     for a in anns:

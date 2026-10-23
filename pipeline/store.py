@@ -30,6 +30,19 @@ CREATE TABLE IF NOT EXISTS filings (
 CREATE INDEX IF NOT EXISTS ix_filings_ticker   ON filings(ticker);
 CREATE INDEX IF NOT EXISTS ix_filings_ann_date ON filings(ann_date);
 
+-- ── S2 fetch log: one row per URL attempted, keyed by URL ────────────────────
+-- Prevents any URL from being re-requested across runs.
+-- doc_sha256 is NULL for non-PDF, too_large and http_* outcomes.
+CREATE TABLE IF NOT EXISTS fetch_log (
+    url           TEXT    PRIMARY KEY,
+    ticker        TEXT    NOT NULL,
+    attempted_at  TEXT    NOT NULL,
+    outcome       TEXT    NOT NULL,
+    doc_sha256    TEXT,
+    bytes         INTEGER
+);
+CREATE INDEX IF NOT EXISTS ix_fetch_log_sha256 ON fetch_log(doc_sha256);
+
 -- ── S4 located statements ────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS doc_statements (
     doc_sha256          TEXT    NOT NULL,
@@ -126,7 +139,8 @@ CREATE TABLE IF NOT EXISTS runs (
 """
 
 PIPELINE_TABLE_NAMES = (
-    "filings", "doc_statements", "line_items", "statements", "facts", "runs",
+    "filings", "fetch_log", "doc_statements", "line_items", "statements",
+    "facts", "runs",
 )
 
 
@@ -164,6 +178,7 @@ def get_status(db) -> dict:
     return {
         "last_run":    run_dict,
         "filings":     _count("SELECT count(*) FROM filings"),
+        "fetched_urls": _count("SELECT count(*) FROM fetch_log"),
         "statements":  _count("SELECT count(*) FROM statements"),
         "verified":    _count("SELECT count(*) FROM statements WHERE status = 'verified'"),
         "quarantined": _count("SELECT count(*) FROM statements WHERE status = 'quarantined'"),
@@ -179,6 +194,18 @@ def upsert_filing(db, **kwargs) -> None:
     col_list = ", ".join(cols)
     db.execute(
         f"INSERT OR REPLACE INTO filings ({col_list}) VALUES ({placeholders})",
+        list(kwargs.values()),
+    )
+
+
+# ── Fetch log ─────────────────────────────────────────────────────────────────
+
+def upsert_fetch_log(db, **kwargs) -> None:
+    cols = list(kwargs)
+    placeholders = ", ".join("?" * len(cols))
+    col_list = ", ".join(cols)
+    db.execute(
+        f"INSERT OR REPLACE INTO fetch_log ({col_list}) VALUES ({placeholders})",
         list(kwargs.values()),
     )
 
