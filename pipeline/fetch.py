@@ -24,6 +24,9 @@ _HEADERS = {
                   "(KHTML, like Gecko) Chrome/124 Safari/537.36",
 }
 
+# Doubles on every 429 received; resets when the process restarts (i.e. per run).
+_delay_multiplier: float = 1.0
+
 
 def fetch_one(db, candidate: dict) -> dict:
     """
@@ -33,14 +36,16 @@ def fetch_one(db, candidate: dict) -> dict:
         "ticker":     str,
         "url":        str,
         "outcome":    "stored" | "duplicate" | "already_fetched" |
-                      "http_<code>" | "not_pdf" | "too_large",
+                      "http_<code>" | "not_pdf" | "too_large" | "rate_limited",
         "doc_sha256": str | None,
         "file_path":  str | None,
         "pages":      int | None,
     }
 
     fetch_log is written for every attempt, including failures.
-    already_fetched: the URL was attempted in an earlier run; no HTTP request is made.
+    already_fetched: the URL was attempted and succeeded (stored or duplicate) in
+    an earlier run; no HTTP request is made.
+    Failures (http_error, not_pdf, too_large, rate_limited) are retried on the next run.
     duplicate: a different URL delivered the same content (same hash). The new URL
                is recorded in fetch_log; filings keeps the original URL.
     """
@@ -49,9 +54,12 @@ def fetch_one(db, candidate: dict) -> dict:
     base   = {"ticker": ticker, "url": url, "doc_sha256": None,
               "file_path": None, "pages": None}
 
-    # ── Fast path: already attempted this URL in a prior run ─────────────────
+    # ── Fast path: already succeeded for this URL in a prior run ─────────────
+    # Only skip on stored/duplicate — failures are retried.
     prior = db.execute(
-        "SELECT outcome, doc_sha256 FROM fetch_log WHERE url=?", (url,)
+        "SELECT outcome, doc_sha256 FROM fetch_log "
+        "WHERE url=? AND outcome IN ('stored', 'duplicate')",
+        (url,)
     ).fetchone()
     if prior:
         log.info("S2 Fetch already_fetched", ticker=ticker, url=url[:80],
@@ -140,16 +148,36 @@ def _count_pages(pdf_bytes: bytes):
 
 
 def _download(url: str) -> bytes | str:
-    """Fetch url with up to 3 attempts and exponential back-off."""
+    """
+    Fetch url with up to 3 attempts and exponential back-off.
+
+    HTTP 429 triggers an immediate wait (Retry-After or 60 s), doubles
+    _delay_multiplier for all subsequent requests this run, then retries.
+    Returns 'rate_limited' if all retries are consumed by 429 responses.
+    """
+    global _delay_multiplier
     import requests
+    rate_limited_count = 0
     for attempt in range(3):
-        delay = 2.0 + random.uniform(0, 1.0) + attempt * 2.0
+        delay = (2.0 + random.uniform(0, 1.0) + attempt * 2.0) * _delay_multiplier
         time.sleep(delay)
         try:
             r = requests.get(url, headers=_HEADERS, timeout=DOWNLOAD_TIMEOUT,
                              verify=True)
             if r.status_code == 200:
                 return r.content
+            if r.status_code == 429:
+                rate_limited_count += 1
+                raw_retry = r.headers.get("Retry-After", "")
+                try:
+                    wait = max(int(raw_retry), 60)
+                except (ValueError, TypeError):
+                    wait = 60
+                _delay_multiplier *= 2
+                log.warning("S2 Fetch rate_limited", url=url[:80], wait=wait,
+                            new_multiplier=_delay_multiplier)
+                time.sleep(wait)
+                continue
             log.info("S2 Fetch http_error", url=url[:80], status=r.status_code,
                      attempt=attempt)
             if r.status_code in (403, 404, 410):
@@ -157,4 +185,4 @@ def _download(url: str) -> bytes | str:
         except Exception as e:
             log.info("S2 Fetch network_error", url=url[:80],
                      error=str(e)[:80], attempt=attempt)
-    return "http_error"
+    return "rate_limited" if rate_limited_count else "http_error"

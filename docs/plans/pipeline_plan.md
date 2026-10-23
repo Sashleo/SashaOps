@@ -433,7 +433,10 @@ The app must stay correct without anyone, Claude Code included, watching or fixi
   2. generate throwaway secrets;
   3. run `scripts/check.sh`: unit tests, repeatability test, the deliberately broken fixtures, ruff, vulture, the template check, and the schema migration test on a copy of an old-schema database.
 - Branch protection on `main`: CI must pass, there are no direct pushes, and history can't be rewritten.
-- The corpus and golden tests need the stored PDFs, which aren't in git. `tools/eval_corpus.py --release` runs them locally and writes a signed result file (`docs/pipeline/release_check.json`: commit, date, per-field counts). CI fails a release tag if that file is missing, is for a different commit, or shows any wrong figure.
+- The corpus and golden tests need the stored PDFs, which aren't in git. `tools/eval_corpus.py --release` runs them locally and writes `docs/pipeline/release_check.json`: the commit tested, the date and the per-field counts. That file is then committed on its own, so the tagged commit is the tested commit plus this one file. CI fails a release tag unless all three hold:
+  - the file's commit equals the tag commit's parent;
+  - the tag commit changes nothing but that file;
+  - the file shows 0 wrong figures.
 
 ### 11A.2 Releases (CD, proportionate to a local app)
 - A release is a git tag, `vX.Y.Z`. On a tag, CI builds the Docker image, runs `check.sh` inside it, and creates a GitHub release with notes generated from the commit messages. No image is published to a public registry.
@@ -517,6 +520,5 @@ All of it is real output from the pipeline, not written separately.
 - **`docs/pipeline/RESULTS.md`, written at M10:**
   - coverage before and after, for example "0 of 635 tickers with a verified balance sheet, to N of the KSE-100";
   - wrong figures on the golden set (target 0);
-  - the defects found and how each was proven (labels treated as scans, ligatures, glued columns, scale, mislabelled documents);
+  - the defects found and how each were proven (labels treated as scans, ligatures, glued columns, scale, mislabelled documents);
   - runtime per document.
-

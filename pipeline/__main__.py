@@ -76,15 +76,15 @@ def cmd_run(args) -> int:
             continue
 
         candidates = disc_result.get("candidates") or []
-        # Fetch the single best candidate per ticker: annual_report > annual_results > interim.
-        _PRIO = {"annual_report": 0, "annual_results": 1, "interim": 2}
-        candidates.sort(key=lambda c: _PRIO.get(c["ann_type"], 9))
-        best = candidates[:1]   # one fetch per ticker for M2
-
-        for c in best:
+        # discover_one already returns only the best selection:
+        # up to 2 annual_reports, or 1 fallback if none found.
+        for c in candidates:
             r = fetch_one(db, c)
             _inc(counts, "fetch", r["outcome"])
-            print(f"  fetch   {ticker}: {r['outcome']}  sha256={(r.get('doc_sha256') or '')[:12] or '-'}")
+            pe = c.get("period_end") or "-"
+            print(f"  fetch   {ticker}: {r['outcome']}  "
+                  f"sha256={(r.get('doc_sha256') or '')[:12] or '-'}  "
+                  f"period={pe}  type={c['ann_type']}")
 
     print("\nSummary:")
     for stage, c in counts.items():
